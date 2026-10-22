@@ -164,7 +164,18 @@ with tab_hive:
         st.subheader("SQL yang sudah dirapikan")
         hive_result = parse_hive(hive_raw)
         hive_errors = validate_columns(hive_result.columns, strict_type=True)
-        st.caption(f"{len(hive_result.columns)} kolom terbaca · sumber: {hive_result.source or 'belum ada'}")
+        st.caption(f"{len(hive_result.columns)} kolom terbaca · format: {hive_result.source or 'belum ada'}")
+        if hive_result.object_name or hive_result.from_table:
+            object_box, source_box = st.columns(2)
+            with object_box:
+                st.caption("Nama VIEW / TABLE")
+                st.code(hive_result.object_name or "—", language=None)
+            with source_box:
+                st.caption("Tabel sumber (FROM)")
+                st.code(hive_result.from_table or "—", language=None)
+            if hive_result.from_table:
+                original_name = hive_result.from_table.rsplit(".", 1)[-1].strip("`")
+                st.caption(f"Nama tabel asli: `{original_name}`")
         if hive_result.columns:
             with st.expander("Pratinjau kolom dan tipe", expanded=bool(hive_errors or hive_result.warnings)):
                 st.dataframe(
@@ -201,7 +212,7 @@ with tab_help:
 3. **Periksa pratinjau.** Nama tanpa tipe memakai `STRING`. Spasi berlebih, baris kosong, dan pemisah di tepi input dirapikan.
 4. **Salin hasil.** STG berisi `STRING`, TXF berisi `CAST(TRIM(...))`, dan SRI memakai tipe input. Ketiganya langsung tampil.
 
-**Reverse SQL Hive:** paste `CREATE VIEW ... AS SELECT`, `CREATE TABLE` / `SHOW CREATE TABLE`, atau hasil `DESCRIBE` dari Hive/Beeline. Tabel `createtab_stmt` hasil copy Hive akan dibuka. Ekspresi `CAST(TRIM(...))` dan `TO_DATE(...)` dibaca, lalu SQL view, STG, TXF, dan SRI ditampilkan.
+**Reverse SQL Hive:** paste `CREATE VIEW ... AS SELECT`, `CREATE TABLE` / `SHOW CREATE TABLE`, atau hasil `DESCRIBE` dari Hive/Beeline. Tabel `createtab_stmt` hasil copy Hive akan dibuka. Nama VIEW/TABLE dan tabel sumber pada `FROM` ditampilkan. Ekspresi `CAST(TRIM(...))` dan `TO_DATE(...)` dibaca, lalu SQL view, STG, TXF, dan SRI ditampilkan.
 
 SQL mengikuti gaya Hive/Impala. Periksa kembali hasil sebelum menjalankannya. Input diproses di server tempat aplikasi berjalan, jadi ikuti kebijakan perusahaan untuk data sensitif.
         """

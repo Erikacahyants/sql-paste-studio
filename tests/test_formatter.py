@@ -160,6 +160,8 @@ def test_reverse_hive_create_table_ignores_table_options_and_comments():
     TBLPROPERTIES ('owner'='unit');"""
     result = parse_hive(raw)
     assert result.source == "CREATE TABLE"
+    assert result.object_name == "db.contoh"
+    assert result.from_table == ""
     assert not result.warnings
     assert [(c.name, c.data_type) for c in result.columns] == [
         ("PERIODE", "varchar(100)"), ("SALDO", "decimal(18,2)"), ("TGL", "date")
@@ -213,6 +215,7 @@ def test_reverse_hive_create_table_includes_partition_columns():
     ) PARTITIONED BY (PERIODE varchar(6))
     STORED AS PARQUET"""
     result = parse_hive(raw)
+    assert result.object_name == "db.saldo"
     assert [(c.name, c.data_type) for c in result.columns] == [
         ("SALDO", "decimal(18,2)"), ("PERIODE", "varchar(6)")
     ]
@@ -227,6 +230,8 @@ def test_reverse_hive_create_view_from_copied_markdown_table():
 | FROM \`PRD_DB_PMS_STG\`.\`sumber\` |"""
     result = parse_hive(raw)
     assert result.source == "CREATE VIEW"
+    assert result.object_name == "`prd_txf_datalake`.`contoh`"
+    assert result.from_table == "`PRD_DB_PMS_STG`.`sumber`"
     assert not result.warnings
     assert [(c.name, c.data_type, c.source_name) for c in result.columns] == [
         ("KODE_CABANG", "VARCHAR(100)", "kode_cabang"),

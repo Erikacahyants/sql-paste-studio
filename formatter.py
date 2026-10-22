@@ -54,6 +54,8 @@ class HiveParseResult:
     source: str
     warnings: list[str]
     clean_sql: str = ""
+    object_name: str = ""
+    from_table: str = ""
 
 
 def _clean_text(raw: str) -> list[str]:
@@ -222,7 +224,9 @@ def _parse_hive_view(text: str) -> HiveParseResult | None:
         formatted.append(f"  CAST(TRIM({source}) AS {pretty_type}) AS {match.group('alias')}")
     view_name = re.sub(r"\s*\.\s*", ".", view.group("name"))
     clean_sql = f"CREATE VIEW {view_name} AS\nSELECT\n" + ",\n".join(formatted) + f"\n{tail};"
-    return HiveParseResult(columns, "CREATE VIEW", warnings, clean_sql)
+    from_name = re.match(rf"FROM\s+(?P<name>{IDENT_PATH})(?=\s|$)", tail, re.I)
+    from_table = re.sub(r"\s*\.\s*", ".", from_name.group("name")) if from_name else ""
+    return HiveParseResult(columns, "CREATE VIEW", warnings, clean_sql, view_name, from_table)
 
 
 def parse_hive(raw: str) -> HiveParseResult:
@@ -237,13 +241,14 @@ def parse_hive(raw: str) -> HiveParseResult:
         return view_result
 
     create = re.search(
-        r"\bCREATE\s+(?:EXTERNAL\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
-        r"[`\"\w.]+\s*\(", text, re.I,
+        rf"\bCREATE\s+(?:EXTERNAL\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+        rf"(?P<name>{IDENT_PATH})\s*\(", text, re.I,
     )
     if create:
+        table_name = re.sub(r"\s*\.\s*", ".", create.group("name"))
         block = _parenthesized_block(text, create.end() - 1)
         if not block:
-            return HiveParseResult([], "CREATE TABLE", ["Kurung daftar kolom CREATE TABLE tidak lengkap."])
+            return HiveParseResult([], "CREATE TABLE", ["Kurung daftar kolom CREATE TABLE tidak lengkap."], object_name=table_name)
         body, closing = block
         sections = [body]
         partition = re.search(r"\bPARTITIONED\s+BY\s*\(", text[closing + 1:], re.I)
@@ -253,7 +258,7 @@ def parse_hive(raw: str) -> HiveParseResult:
             if partition_block:
                 sections.append(partition_block[0])
             else:
-                return HiveParseResult([], "CREATE TABLE", ["Kurung PARTITIONED BY tidak lengkap."])
+                return HiveParseResult([], "CREATE TABLE", ["Kurung PARTITIONED BY tidak lengkap."], object_name=table_name)
         columns: list[Column] = []
         warnings: list[str] = []
         for section in sections:
@@ -267,7 +272,7 @@ def parse_hive(raw: str) -> HiveParseResult:
                     columns.append(declaration)
                 else:
                     warnings.append(f"Tidak terbaca sebagai kolom: {item[:90]}")
-        return HiveParseResult(columns, "CREATE TABLE", warnings)
+        return HiveParseResult(columns, "CREATE TABLE", warnings, object_name=table_name)
 
     columns = []
     warnings = []
