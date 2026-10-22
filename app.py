@@ -50,7 +50,8 @@ HIVE_SAMPLE = """| createtab_stmt |
 | -------------- |
 | CREATE VIEW `prd_txf_datalake`.`contoh` AS SELECT |
 | CAST(TRIM(`sumber`.`periode`) AS VARCHAR(100)) AS `PERIODE`, |
-| CAST(TRIM(`sumber`.`saldo`) AS DECIMAL(18,2)) AS `SALDO` |
+| CAST(TRIM(`sumber`.`saldo`) AS DECIMAL(18,2)) AS `SALDO`, |
+| TO_DATE(`sumber`.`as_of_date`) AS `AS_OF_DATE` |
 | FROM `prd_db_pms_stg`.`sumber` |"""
 
 st.session_state.setdefault("schema_text", SCHEMA_SAMPLE)
@@ -200,7 +201,7 @@ with tab_help:
 3. **Periksa pratinjau.** Nama tanpa tipe memakai `STRING`. Spasi berlebih, baris kosong, dan pemisah di tepi input dirapikan.
 4. **Salin hasil.** STG berisi `STRING`, TXF berisi `CAST(TRIM(...))`, dan SRI memakai tipe input. Ketiganya langsung tampil.
 
-**Reverse SQL Hive:** paste `CREATE VIEW ... AS SELECT`, `CREATE TABLE` / `SHOW CREATE TABLE`, atau hasil `DESCRIBE` dari Hive/Beeline. Tabel `createtab_stmt` hasil copy Hive akan dibuka, SQL view dirapikan, lalu STG, TXF, dan SRI ditampilkan.
+**Reverse SQL Hive:** paste `CREATE VIEW ... AS SELECT`, `CREATE TABLE` / `SHOW CREATE TABLE`, atau hasil `DESCRIBE` dari Hive/Beeline. Tabel `createtab_stmt` hasil copy Hive akan dibuka. Ekspresi `CAST(TRIM(...))` dan `TO_DATE(...)` dibaca, lalu SQL view, STG, TXF, dan SRI ditampilkan.
 
 SQL mengikuti gaya Hive/Impala. Periksa kembali hasil sebelum menjalankannya. Input diproses di server tempat aplikasi berjalan, jadi ikuti kebijakan perusahaan untuk data sensitif.
         """

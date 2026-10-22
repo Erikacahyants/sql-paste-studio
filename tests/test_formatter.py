@@ -238,3 +238,24 @@ def test_reverse_hive_create_view_from_copied_markdown_table():
     assert outputs["STG"] == "KODE_CABANG STRING,\nSALDO STRING"
     assert "CAST(TRIM(nilai_asli) AS DECIMAL(18,2)) AS SALDO" in outputs["TXF"]
     assert outputs["SRI"] == "KODE_CABANG VARCHAR(100),\nSALDO DECIMAL(18,2)"
+
+
+def test_reverse_hive_view_mixes_cast_and_to_date():
+    raw = r"""| createtab_stmt |
+| -------------------------- |
+| CREATE VIEW \`db_txf\`.\`contoh\` AS SELECT |
+| CAST(TRIM(\`sumber\`.\`rownum\`) AS INTEGER) AS \`ROWNUM\`, |
+| CAST(TRIM(\`sumber\`.\`kode\`) AS VARCHAR(100)) AS \`KODE\`, |
+| CAST(TRIM(\`sumber\`.\`l1\`) AS VARCHAR(100)) AS \`l1\`, |
+| TO_DATE(\`sumber\`.\`as_of_date\`) AS \`AS_OF_DATE\` |
+| FROM \`db_stg\`.\`sumber\` |"""
+    result = parse_hive(raw)
+    assert not result.warnings
+    assert not validate_columns(result.columns, strict_type=True)
+    assert [c.name for c in result.columns] == ["ROWNUM", "KODE", "l1", "AS_OF_DATE"]
+    assert result.columns[-1].data_type == "DATE"
+    assert "TO_DATE(`sumber`.`as_of_date`) AS `AS_OF_DATE`" in result.clean_sql
+    outputs = format_schema_sql(result.columns, char_to_varchar=False)
+    assert outputs["STG"].endswith("AS_OF_DATE STRING")
+    assert outputs["TXF"].endswith("TO_DATE(as_of_date) AS AS_OF_DATE")
+    assert outputs["SRI"].endswith("AS_OF_DATE DATE")

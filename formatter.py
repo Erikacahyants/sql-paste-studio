@@ -22,6 +22,10 @@ CAST_SELECT_RE = re.compile(
     rf"(?P<type>[A-Za-z][A-Za-z0-9_ ]*(?:\s*\(\s*\d+\s*(?:,\s*\d+\s*)?\))?)\s*\)"
     rf"\s+AS\s+(?P<alias>{IDENT_PART})$", re.I | re.S,
 )
+TO_DATE_SELECT_RE = re.compile(
+    rf"^TO_DATE\s*\(\s*(?P<source>{IDENT_PATH})\s*\)\s+AS\s+"
+    rf"(?P<alias>{IDENT_PART})$", re.I | re.S,
+)
 VIEW_SELECT_RE = re.compile(
     rf"\bCREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?P<name>{IDENT_PATH})\s+AS\s+SELECT\b",
     re.I | re.S,
@@ -41,6 +45,7 @@ class Column:
     name: str
     data_type: str = "STRING"
     source_name: str | None = None
+    transform: str | None = None
 
 
 @dataclass(frozen=True)
@@ -194,6 +199,14 @@ def _parse_hive_view(text: str) -> HiveParseResult | None:
         if not expression:
             continue
         match = CAST_SELECT_RE.fullmatch(expression)
+        date_match = TO_DATE_SELECT_RE.fullmatch(expression) if not match else None
+        if date_match:
+            source = re.sub(r"\s*\.\s*", ".", date_match.group("source"))
+            source_name = _remove_quotes(source.rsplit(".", 1)[-1])
+            alias = _remove_quotes(date_match.group("alias"))
+            columns.append(Column(alias, "DATE", source_name, "TO_DATE"))
+            formatted.append(f"  TO_DATE({source}) AS {date_match.group('alias')}")
+            continue
         if not match:
             warnings.append(f"Ekspresi SELECT tidak terbaca: {expression[:90]}")
             continue
@@ -531,7 +544,10 @@ def format_schema_sql(
         data_type = normalize_type(col.data_type, char_to_varchar=char_to_varchar)
         sri.append(f"{name} {data_type}")
         stg.append(f"{name} STRING" + (" COMMENT 'from deserializer'" if stg_comment else ""))
-        txf.append(f"CAST(TRIM({source_name}) AS {data_type}) AS {name}")
+        if col.transform == "TO_DATE":
+            txf.append(f"TO_DATE({source_name}) AS {name}")
+        else:
+            txf.append(f"CAST(TRIM({source_name}) AS {data_type}) AS {name}")
     return {
         "SRI": _lines_with_commas(sri, False),
         "STG": _lines_with_commas(stg, False),
