@@ -5,7 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest
 from formatter import (
-    parse_quick, parse_schema, format_string_ddl,
+    parse_hive, parse_quick, parse_schema, format_string_ddl,
     format_schema_sql, validate_columns, normalize_type,
 )
 
@@ -149,3 +149,70 @@ def test_char_type_is_preserved_when_conversion_is_off():
     outputs = format_schema_sql(parse_schema("KODE char(2)"), char_to_varchar=False)
     assert outputs["SRI"] == "KODE CHAR(2)"
     assert "AS CHAR(2)" in outputs["TXF"]
+
+
+def test_reverse_hive_create_table_ignores_table_options_and_comments():
+    raw = """CREATE EXTERNAL TABLE IF NOT EXISTS db.contoh (
+      `PERIODE` varchar(100) COMMENT 'bulan',
+      `SALDO` decimal(18,2),
+      `TGL` date
+    ) STORED AS PARQUET
+    TBLPROPERTIES ('owner'='unit');"""
+    result = parse_hive(raw)
+    assert result.source == "CREATE TABLE"
+    assert not result.warnings
+    assert [(c.name, c.data_type) for c in result.columns] == [
+        ("PERIODE", "varchar(100)"), ("SALDO", "decimal(18,2)"), ("TGL", "date")
+    ]
+    outputs = format_schema_sql(result.columns, char_to_varchar=False)
+    assert outputs["STG"].startswith("PERIODE STRING")
+    assert "CAST(TRIM(SALDO) AS DECIMAL(18,2)) AS SALDO" in outputs["TXF"]
+    assert "PERIODE VARCHAR(100)" in outputs["SRI"]
+
+
+def test_reverse_hive_describe_from_beeline_table():
+    raw = """+------------+---------------+---------+
+| col_name   | data_type     | comment |
++------------+---------------+---------+
+| PERIODE    | varchar(100)  | bulan   |
+| SALDO      | decimal(18,2) |         |
++------------+---------------+---------+
+# Partition Information
+| PERIODE    | varchar(100)  |         |"""
+    result = parse_hive(raw)
+    assert [(c.name, c.data_type) for c in result.columns] == [
+        ("PERIODE", "varchar(100)"), ("SALDO", "decimal(18,2)")
+    ]
+    assert not result.warnings
+
+
+def test_reverse_hive_describe_tab_and_padded_text():
+    raw = """# col_name             data_type          comment
+PERIODE                varchar(100)       bulan
+SALDO\tdecimal(18,2)\tjumlah saldo"""
+    result = parse_hive(raw)
+    assert [(c.name, c.data_type) for c in result.columns] == [
+        ("PERIODE", "varchar(100)"), ("SALDO", "decimal(18,2)")
+    ]
+
+
+def test_reverse_hive_ignores_beeline_footer_and_partition_section():
+    raw = """| col_name | data_type    | comment |
+| PERIODE  | varchar(100) |         |
+| # Partition Information | | |
+| PERIODE  | varchar(100) |         |
+2 rows selected (0.2 seconds)"""
+    result = parse_hive(raw)
+    assert [(c.name, c.data_type) for c in result.columns] == [("PERIODE", "varchar(100)")]
+    assert not result.warnings
+
+
+def test_reverse_hive_create_table_includes_partition_columns():
+    raw = """CREATE TABLE db.saldo (
+      SALDO decimal(18,2)
+    ) PARTITIONED BY (PERIODE varchar(6))
+    STORED AS PARQUET"""
+    result = parse_hive(raw)
+    assert [(c.name, c.data_type) for c in result.columns] == [
+        ("SALDO", "decimal(18,2)"), ("PERIODE", "varchar(6)")
+    ]

@@ -5,6 +5,7 @@ import streamlit as st
 
 from formatter import (
     format_schema_sql,
+    parse_hive,
     parse_schema,
     validate_columns,
 )
@@ -45,8 +46,16 @@ SCHEMA_SAMPLE = """PERIODE varchar(100)
 KODE_CABANG varchar(20)
 SALDO decimal(18,2)
 TGL date"""
+HIVE_SAMPLE = """+----------+---------------+---------+
+| col_name | data_type     | comment |
++----------+---------------+---------+
+| PERIODE  | varchar(100)  | bulan   |
+| SALDO    | decimal(18,2) |         |
+| TGL      | date          |         |
++----------+---------------+---------+"""
 
 st.session_state.setdefault("schema_text", SCHEMA_SAMPLE)
+st.session_state.setdefault("hive_text", HIVE_SAMPLE)
 
 DELIMITER_CHOICES = ["Otomatis", "|", "|@~", "TAB", "Koma", "Baris baru", "Kustom"]
 
@@ -84,7 +93,7 @@ def show_errors(errors: list[str]) -> None:
         st.error(f"Ada {len(errors) - 8} masalah lain. Periksa input dan pratinjau kolom.")
 
 
-tab_schema, tab_help = st.tabs(["Generator STG / TXF / SRI", "Panduan"])
+tab_schema, tab_hive, tab_help = st.tabs(["Generator STG / TXF / SRI", "Reverse SQL Hive", "Panduan"])
 
 with tab_schema:
     left, right = st.columns([1, 1], gap="large")
@@ -134,6 +143,52 @@ with tab_schema:
         elif schema_delimiter:
             st.info("Paste daftar kolom atau schema di sebelah kiri untuk melihat ketiga hasil.")
 
+with tab_hive:
+    left, right = st.columns([1, 1], gap="large")
+    with left, st.container(border=True):
+        st.markdown('<div class="step">01 / Paste dari Hive</div>', unsafe_allow_html=True)
+        st.subheader("SQL atau hasil DESCRIBE")
+        st.markdown('<div class="section-note">Paste hasil SHOW CREATE TABLE, CREATE TABLE, atau DESCRIBE dari Hive/Beeline.</div>', unsafe_allow_html=True)
+        input_actions("hive", HIVE_SAMPLE)
+        hive_raw = st.text_area(
+            "Teks dari Hive", key="hive_text", height=340,
+            placeholder="CREATE TABLE db.nama_tabel (\n  PERIODE varchar(100),\n  SALDO decimal(18,2)\n);",
+        )
+        st.caption("Garis tabel, header col_name/data_type, komentar, dan properti tabel akan dibersihkan otomatis.")
+        with st.expander("Pengaturan SQL Hive"):
+            hive_convert_char = st.toggle("Ubah CHAR menjadi VARCHAR", value=False, key="hive_convert_char")
+            hive_quote = st.toggle("Gunakan backtick", value=False, key="hive_quote")
+            hive_stg_comment = st.toggle("Tambahkan COMMENT di STG", value=False, key="hive_stg_comment")
+    with right, st.container(border=True):
+        st.markdown('<div class="step">02 / Periksa & salin</div>', unsafe_allow_html=True)
+        st.subheader("SQL yang sudah dirapikan")
+        hive_result = parse_hive(hive_raw)
+        hive_errors = validate_columns(hive_result.columns, strict_type=True)
+        st.caption(f"{len(hive_result.columns)} kolom terbaca · sumber: {hive_result.source or 'belum ada'}")
+        if hive_result.columns:
+            with st.expander("Pratinjau kolom dan tipe", expanded=bool(hive_errors or hive_result.warnings)):
+                st.dataframe(
+                    [{"No": i, "Nama kolom": col.name, "Tipe": col.data_type}
+                     for i, col in enumerate(hive_result.columns, 1)],
+                    hide_index=True, use_container_width=True,
+                )
+        show_errors(hive_result.warnings + hive_errors)
+        if hive_result.columns and not hive_errors and not hive_result.warnings:
+            hive_outputs = format_schema_sql(
+                hive_result.columns, quote=hive_quote,
+                char_to_varchar=hive_convert_char, stg_comment=hive_stg_comment,
+            )
+            for title, description in [
+                ("STG", "Semua STRING"), ("TXF", "CAST + TRIM"), ("SRI", "Kolom bertipe rapi"),
+            ]:
+                st.markdown(f"**{title}** · {description}")
+                st.code(hive_outputs[title], language="sql", wrap_lines=True)
+            st.caption("Salin tiap blok lewat ikon di kanan atasnya.")
+        elif hive_errors or hive_result.warnings:
+            st.warning("Ada bagian input yang belum terbaca. Periksa teks Hive sebelum menyalin SQL.")
+        else:
+            st.info("Paste SQL atau hasil DESCRIBE dari Hive di sebelah kiri.")
+
 with tab_help:
     st.subheader("Panduan singkat")
     st.markdown(
@@ -142,6 +197,8 @@ with tab_help:
 2. **Pilih pemisah bila perlu.** Otomatis mengenali TAB, `|@~`, `|`, dan koma. Pilih **Kustom** untuk pemisah lain. Format tabel seperti `PERIODE|@~varchar|@~100` juga didukung.
 3. **Periksa pratinjau.** Nama tanpa tipe memakai `STRING`. Spasi berlebih, baris kosong, dan pemisah di tepi input dirapikan.
 4. **Salin hasil.** STG berisi `STRING`, TXF berisi `CAST(TRIM(...))`, dan SRI memakai tipe input. Ketiganya langsung tampil.
+
+**Reverse SQL Hive:** paste `CREATE TABLE` / `SHOW CREATE TABLE` atau hasil `DESCRIBE` dari Hive/Beeline. Aplikasi mengambil nama dan tipe kolom, membuang tampilan tabel yang berantakan, lalu menampilkan STG, TXF, dan SRI yang rapi.
 
 SQL mengikuti gaya Hive/Impala. Periksa kembali hasil sebelum menjalankannya. Input diproses di server tempat aplikasi berjalan, jadi ikuti kebijakan perusahaan untuk data sensitif.
         """

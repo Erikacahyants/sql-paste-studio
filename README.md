@@ -8,6 +8,7 @@ Aplikasi web **Streamlit** untuk menghasilkan tiga blok SQL **STG / TXF / SRI** 
 - Paste deklarasi seperti `PERIODE varchar(100)` dan `SALDO decimal(18,2)`, satu per baris atau dipisahkan koma. Nama tanpa tipe memakai `STRING`.
 - Spasi berlebih, baris kosong, dan pemisah di tepi input dirapikan. Pratinjau memperlihatkan nama dan tipe yang benar-benar terbaca sebelum SQL disalin.
 - Paste schema `nama|tipe|panjang|scale` atau tabel Markdown. **STG** memakai STRING, **TXF** berisi `CAST(TRIM(KOLOM) AS TIPE) AS KOLOM`, dan **SRI** memakai tipe input.
+- Tab **Reverse SQL Hive** membaca `CREATE TABLE`, `SHOW CREATE TABLE`, dan output `DESCRIBE` Hive/Beeline. Pembungkus tabel dan metadata dibersihkan sebelum menghasilkan tiga blok SQL.
 - CHAR(n) dapat diganti dengan VARCHAR(n) pada SRI/TXF bila opsi diaktifkan.
 - SQL langsung tampil dan bisa disalin lewat ikon salin bawaan `st.code` (pojok kanan atas blok kode).
 - Validasi nama kolom, kolom duplikat, tipe yang belum lengkap, serta sel schema yang salah format.
@@ -63,6 +64,19 @@ PERIODE VARCHAR(100),
 SALDO DECIMAL(18,2),
 TGL DATE
 ```
+
+Untuk reverse SQL, paste misalnya output Hive berikut di tab **Reverse SQL Hive**:
+
+```text
++----------+---------------+---------+
+| col_name | data_type     | comment |
++----------+---------------+---------+
+| PERIODE  | varchar(100)  | bulan   |
+| SALDO    | decimal(18,2) |         |
++----------+---------------+---------+
+```
+
+Aplikasi menampilkan ulang STG, TXF, dan SRI yang rapi dan bisa langsung disalin.
 
 ## Keamanan dan keterbatasan
 

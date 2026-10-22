@@ -31,6 +31,13 @@ class Column:
     data_type: str = "STRING"
 
 
+@dataclass(frozen=True)
+class HiveParseResult:
+    columns: list[Column]
+    source: str
+    warnings: list[str]
+
+
 def _clean_text(raw: str) -> list[str]:
     raw = raw.replace("\ufeff", "").replace("\u00a0", " ").replace("\u200b", "").strip()
     lines = []
@@ -116,6 +123,109 @@ def _schema_decl(line: str) -> Column | None:
     """Keep even unknown type names so strict validation can report them."""
     match = DECL_RE.fullmatch(line.strip().rstrip(","))
     return Column(match.group("name"), match.group("type").strip()) if match else None
+
+
+def _parenthesized_block(raw: str, opening: int) -> tuple[str, int] | None:
+    """Return the contents and closing position of one SQL parenthesis block."""
+    depth = 0
+    quote = ""
+    for i in range(opening, len(raw)):
+        char = raw[i]
+        if quote:
+            if char == quote:
+                quote = ""
+        elif char in "\"'`":
+            quote = char
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return raw[opening + 1:i], i
+    return None
+
+
+def parse_hive(raw: str) -> HiveParseResult:
+    """Read common Hive CREATE TABLE and DESCRIBE/Beeline clipboard formats."""
+    text = raw.replace("\ufeff", "").replace("\u00a0", " ").strip()
+    if not text:
+        return HiveParseResult([], "", [])
+
+    create = re.search(
+        r"\bCREATE\s+(?:EXTERNAL\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+        r"[`\"\w.]+\s*\(", text, re.I,
+    )
+    if create:
+        block = _parenthesized_block(text, create.end() - 1)
+        if not block:
+            return HiveParseResult([], "CREATE TABLE", ["Kurung daftar kolom CREATE TABLE tidak lengkap."])
+        body, closing = block
+        sections = [body]
+        partition = re.search(r"\bPARTITIONED\s+BY\s*\(", text[closing + 1:], re.I)
+        if partition:
+            partition_opening = closing + 1 + partition.end() - 1
+            partition_block = _parenthesized_block(text, partition_opening)
+            if partition_block:
+                sections.append(partition_block[0])
+            else:
+                return HiveParseResult([], "CREATE TABLE", ["Kurung PARTITIONED BY tidak lengkap."])
+        columns: list[Column] = []
+        warnings: list[str] = []
+        for section in sections:
+            section = re.sub(r"(?m)--[^\n]*", "", section)
+            for item in _split_commas(section):
+                item = item.strip()
+                if not item:
+                    continue
+                declaration = _schema_decl(item)
+                if declaration:
+                    columns.append(declaration)
+                else:
+                    warnings.append(f"Tidak terbaca sebagai kolom: {item[:90]}")
+        return HiveParseResult(columns, "CREATE TABLE", warnings)
+
+    columns = []
+    warnings = []
+    in_data = False
+    for number, original in enumerate(text.splitlines(), 1):
+        line = original.strip()
+        if not line or line.startswith("```"):
+            continue
+        if re.match(r"^(?:Time taken:|Fetched:|\d+ rows? selected\b|OK$)", line, re.I):
+            continue
+        if line.startswith("#"):
+            if re.match(r"#\s*(?:Partition Information|Detailed Table Information)", line, re.I):
+                break
+            continue
+        if re.fullmatch(r"[+|\-=: \t]+", line):
+            continue
+        if line.startswith("|"):
+            cells = _cells(line, "|")
+        elif "\t" in line:
+            cells = _cells(line, "\t")
+        else:
+            cells = re.split(r"\s{2,}", line, maxsplit=2)
+            if len(cells) == 1:
+                declaration = _schema_decl(line)
+                if declaration:
+                    columns.append(declaration)
+                    in_data = True
+                    continue
+        if not cells or not cells[0]:
+            continue
+        name = _remove_quotes(cells[0]).lstrip("# ")
+        if re.match(r"^(?:Partition Information|Detailed Table Information)$", name, re.I):
+            break
+        if name.lower() in HEADER_NAMES or name.lower() in {"col_name", "column name"}:
+            in_data = True
+            continue
+        if len(cells) >= 2 and IDENTIFIER_RE.fullmatch(name):
+            data_type = _remove_quotes(cells[1])
+            columns.append(Column(name, data_type or "STRING"))
+            in_data = True
+        elif in_data:
+            warnings.append(f"Baris {number} tidak terbaca: {line[:90]}")
+    return HiveParseResult(columns, "DESCRIBE / tabel Hive", warnings)
 
 
 def _looks_typed(cells: list[str]) -> bool:
