@@ -216,3 +216,25 @@ def test_reverse_hive_create_table_includes_partition_columns():
     assert [(c.name, c.data_type) for c in result.columns] == [
         ("SALDO", "decimal(18,2)"), ("PERIODE", "varchar(6)")
     ]
+
+
+def test_reverse_hive_create_view_from_copied_markdown_table():
+    raw = r"""| createtab_stmt |
+| ------------------------- |
+| CREATE VIEW \`prd_txf_datalake\`.\`contoh\` AS SELECT |
+| CAST(TRIM(\`sumber\`.\`kode_cabang\`) AS VARCHAR(100)) AS \`KODE_CABANG\`, |
+| CAST(TRIM(\`sumber\`.\`nilai_asli\`) AS DECIMAL(18,2)) AS \`SALDO\` |
+| FROM \`PRD_DB_PMS_STG\`.\`sumber\` |"""
+    result = parse_hive(raw)
+    assert result.source == "CREATE VIEW"
+    assert not result.warnings
+    assert [(c.name, c.data_type, c.source_name) for c in result.columns] == [
+        ("KODE_CABANG", "VARCHAR(100)", "kode_cabang"),
+        ("SALDO", "DECIMAL(18,2)", "nilai_asli"),
+    ]
+    assert result.clean_sql.startswith("CREATE VIEW `prd_txf_datalake`.`contoh` AS\nSELECT\n")
+    assert "\nFROM `PRD_DB_PMS_STG`.`sumber`;" in result.clean_sql
+    outputs = format_schema_sql(result.columns, char_to_varchar=False)
+    assert outputs["STG"] == "KODE_CABANG STRING,\nSALDO STRING"
+    assert "CAST(TRIM(nilai_asli) AS DECIMAL(18,2)) AS SALDO" in outputs["TXF"]
+    assert outputs["SRI"] == "KODE_CABANG VARCHAR(100),\nSALDO DECIMAL(18,2)"

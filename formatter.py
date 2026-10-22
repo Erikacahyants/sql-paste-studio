@@ -15,6 +15,17 @@ DECL_RE = re.compile(
     r"(?P<type>[A-Za-z][A-Za-z0-9_ ]*(?:\s*\(\s*\d+\s*(?:,\s*\d+\s*)?\))?)"
     r"(?:\s+COMMENT\s+['\"].*?['\"])?\s*,?\s*$", re.I
 )
+IDENT_PART = r"(?:`[A-Za-z_][A-Za-z0-9_]*`|[A-Za-z_][A-Za-z0-9_]*)"
+IDENT_PATH = rf"{IDENT_PART}(?:\s*\.\s*{IDENT_PART})*"
+CAST_SELECT_RE = re.compile(
+    rf"^CAST\s*\(\s*TRIM\s*\(\s*(?P<source>{IDENT_PATH})\s*\)\s+AS\s+"
+    rf"(?P<type>[A-Za-z][A-Za-z0-9_ ]*(?:\s*\(\s*\d+\s*(?:,\s*\d+\s*)?\))?)\s*\)"
+    rf"\s+AS\s+(?P<alias>{IDENT_PART})$", re.I | re.S,
+)
+VIEW_SELECT_RE = re.compile(
+    rf"\bCREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?P<name>{IDENT_PATH})\s+AS\s+SELECT\b",
+    re.I | re.S,
+)
 KNOWN_TYPES = {
     "STRING", "VARCHAR", "CHAR", "TEXT", "INT", "INTEGER", "BIGINT",
     "SMALLINT", "TINYINT", "DECIMAL", "NUMERIC", "NUMBER", "DOUBLE",
@@ -29,6 +40,7 @@ HEADER_TYPES = {"type", "data_type", "datatype", "tipe", "tipe_data", "data type
 class Column:
     name: str
     data_type: str = "STRING"
+    source_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -36,6 +48,7 @@ class HiveParseResult:
     columns: list[Column]
     source: str
     warnings: list[str]
+    clean_sql: str = ""
 
 
 def _clean_text(raw: str) -> list[str]:
@@ -145,11 +158,70 @@ def _parenthesized_block(raw: str, opening: int) -> tuple[str, int] | None:
     return None
 
 
+def _unwrap_createtab_result(raw: str) -> str:
+    """Remove the one-column Markdown table wrapped around Hive SHOW CREATE output."""
+    lines = raw.splitlines()
+    if not any(re.fullmatch(r"\|\s*createtab_stmt\s*\|", line.strip(), re.I) for line in lines[:3]):
+        return raw
+    content = []
+    for line in lines:
+        line = line.strip()
+        if not line.startswith("|") or not line.endswith("|"):
+            continue
+        cell = line[1:-1].strip()
+        if cell.lower() == "createtab_stmt" or _is_separator(cell):
+            continue
+        content.append(cell)
+    return "\n".join(content)
+
+
+def _parse_hive_view(text: str) -> HiveParseResult | None:
+    sql = _unwrap_createtab_result(text).replace("\\`", "`")
+    view = VIEW_SELECT_RE.search(sql)
+    if not view:
+        return None
+    remaining = sql[view.end():]
+    from_clause = re.search(r"\bFROM\b", remaining, re.I)
+    if not from_clause:
+        return HiveParseResult([], "CREATE VIEW", ["Bagian FROM pada CREATE VIEW tidak ditemukan."])
+    select_body = remaining[:from_clause.start()]
+    tail = re.sub(r"\s+", " ", remaining[from_clause.start():].strip()).rstrip(";")
+    columns: list[Column] = []
+    formatted: list[str] = []
+    warnings: list[str] = []
+    for expression in _split_commas(select_body):
+        expression = expression.strip()
+        if not expression:
+            continue
+        match = CAST_SELECT_RE.fullmatch(expression)
+        if not match:
+            warnings.append(f"Ekspresi SELECT tidak terbaca: {expression[:90]}")
+            continue
+        source = re.sub(r"\s*\.\s*", ".", match.group("source"))
+        source_name = _remove_quotes(source.rsplit(".", 1)[-1])
+        alias = _remove_quotes(match.group("alias"))
+        data_type = match.group("type").strip()
+        columns.append(Column(alias, data_type, source_name))
+        try:
+            pretty_type = normalize_type(data_type, char_to_varchar=False)
+        except ValueError:
+            pretty_type = data_type
+        formatted.append(f"  CAST(TRIM({source}) AS {pretty_type}) AS {match.group('alias')}")
+    view_name = re.sub(r"\s*\.\s*", ".", view.group("name"))
+    clean_sql = f"CREATE VIEW {view_name} AS\nSELECT\n" + ",\n".join(formatted) + f"\n{tail};"
+    return HiveParseResult(columns, "CREATE VIEW", warnings, clean_sql)
+
+
 def parse_hive(raw: str) -> HiveParseResult:
     """Read common Hive CREATE TABLE and DESCRIBE/Beeline clipboard formats."""
-    text = raw.replace("\ufeff", "").replace("\u00a0", " ").strip()
+    text = _unwrap_createtab_result(
+        raw.replace("\ufeff", "").replace("\u00a0", " ").strip()
+    ).replace("\\`", "`")
     if not text:
         return HiveParseResult([], "", [])
+    view_result = _parse_hive_view(text)
+    if view_result:
+        return view_result
 
     create = re.search(
         r"\bCREATE\s+(?:EXTERNAL\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
@@ -401,6 +473,8 @@ def validate_columns(columns: list[Column], strict_type: bool = False) -> list[s
     for i, column in enumerate(columns, 1):
         if not IDENTIFIER_RE.fullmatch(column.name):
             messages.append(f"Baris {i}: nama kolom {column.name!r} tidak valid. Gunakan huruf, angka, atau underscore; jangan diawali angka.")
+        if column.source_name and not IDENTIFIER_RE.fullmatch(column.source_name):
+            messages.append(f"Baris {i}: nama kolom sumber {column.source_name!r} tidak valid.")
         key = column.name.upper()
         if key in seen:
             messages.append(f"Baris {i}: nama kolom {column.name!r} duplikat.")
@@ -453,10 +527,11 @@ def format_schema_sql(
     txf: list[str] = []
     for col in columns:
         name = ident(col.name, quote)
+        source_name = ident(col.source_name or col.name, quote)
         data_type = normalize_type(col.data_type, char_to_varchar=char_to_varchar)
         sri.append(f"{name} {data_type}")
         stg.append(f"{name} STRING" + (" COMMENT 'from deserializer'" if stg_comment else ""))
-        txf.append(f"CAST(TRIM({name}) AS {data_type}) AS {name}")
+        txf.append(f"CAST(TRIM({source_name}) AS {data_type}) AS {name}")
     return {
         "SRI": _lines_with_commas(sri, False),
         "STG": _lines_with_commas(stg, False),

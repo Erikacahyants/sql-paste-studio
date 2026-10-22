@@ -46,13 +46,12 @@ SCHEMA_SAMPLE = """PERIODE varchar(100)
 KODE_CABANG varchar(20)
 SALDO decimal(18,2)
 TGL date"""
-HIVE_SAMPLE = """+----------+---------------+---------+
-| col_name | data_type     | comment |
-+----------+---------------+---------+
-| PERIODE  | varchar(100)  | bulan   |
-| SALDO    | decimal(18,2) |         |
-| TGL      | date          |         |
-+----------+---------------+---------+"""
+HIVE_SAMPLE = """| createtab_stmt |
+| -------------- |
+| CREATE VIEW `prd_txf_datalake`.`contoh` AS SELECT |
+| CAST(TRIM(`sumber`.`periode`) AS VARCHAR(100)) AS `PERIODE`, |
+| CAST(TRIM(`sumber`.`saldo`) AS DECIMAL(18,2)) AS `SALDO` |
+| FROM `prd_db_pms_stg`.`sumber` |"""
 
 st.session_state.setdefault("schema_text", SCHEMA_SAMPLE)
 st.session_state.setdefault("hive_text", HIVE_SAMPLE)
@@ -148,13 +147,13 @@ with tab_hive:
     with left, st.container(border=True):
         st.markdown('<div class="step">01 / Paste dari Hive</div>', unsafe_allow_html=True)
         st.subheader("SQL atau hasil DESCRIBE")
-        st.markdown('<div class="section-note">Paste hasil SHOW CREATE TABLE, CREATE TABLE, atau DESCRIBE dari Hive/Beeline.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-note">Paste CREATE VIEW, SHOW CREATE TABLE, CREATE TABLE, atau DESCRIBE dari Hive/Beeline.</div>', unsafe_allow_html=True)
         input_actions("hive", HIVE_SAMPLE)
         hive_raw = st.text_area(
             "Teks dari Hive", key="hive_text", height=340,
             placeholder="CREATE TABLE db.nama_tabel (\n  PERIODE varchar(100),\n  SALDO decimal(18,2)\n);",
         )
-        st.caption("Garis tabel, header col_name/data_type, komentar, dan properti tabel akan dibersihkan otomatis.")
+        st.caption("Bisa paste tabel createtab_stmt seperti hasil copy Hive. Garis tabel dan header akan dibersihkan otomatis.")
         with st.expander("Pengaturan SQL Hive"):
             hive_convert_char = st.toggle("Ubah CHAR menjadi VARCHAR", value=False, key="hive_convert_char")
             hive_quote = st.toggle("Gunakan backtick", value=False, key="hive_quote")
@@ -168,12 +167,15 @@ with tab_hive:
         if hive_result.columns:
             with st.expander("Pratinjau kolom dan tipe", expanded=bool(hive_errors or hive_result.warnings)):
                 st.dataframe(
-                    [{"No": i, "Nama kolom": col.name, "Tipe": col.data_type}
+                    [{"No": i, "Nama kolom": col.name, "Kolom sumber": col.source_name or col.name, "Tipe": col.data_type}
                      for i, col in enumerate(hive_result.columns, 1)],
                     hide_index=True, use_container_width=True,
                 )
         show_errors(hive_result.warnings + hive_errors)
         if hive_result.columns and not hive_errors and not hive_result.warnings:
+            if hive_result.clean_sql:
+                st.markdown("**SQL VIEW rapi** · hasil reverse dari Hive")
+                st.code(hive_result.clean_sql, language="sql", wrap_lines=True)
             hive_outputs = format_schema_sql(
                 hive_result.columns, quote=hive_quote,
                 char_to_varchar=hive_convert_char, stg_comment=hive_stg_comment,
@@ -198,7 +200,7 @@ with tab_help:
 3. **Periksa pratinjau.** Nama tanpa tipe memakai `STRING`. Spasi berlebih, baris kosong, dan pemisah di tepi input dirapikan.
 4. **Salin hasil.** STG berisi `STRING`, TXF berisi `CAST(TRIM(...))`, dan SRI memakai tipe input. Ketiganya langsung tampil.
 
-**Reverse SQL Hive:** paste `CREATE TABLE` / `SHOW CREATE TABLE` atau hasil `DESCRIBE` dari Hive/Beeline. Aplikasi mengambil nama dan tipe kolom, membuang tampilan tabel yang berantakan, lalu menampilkan STG, TXF, dan SRI yang rapi.
+**Reverse SQL Hive:** paste `CREATE VIEW ... AS SELECT`, `CREATE TABLE` / `SHOW CREATE TABLE`, atau hasil `DESCRIBE` dari Hive/Beeline. Tabel `createtab_stmt` hasil copy Hive akan dibuka, SQL view dirapikan, lalu STG, TXF, dan SRI ditampilkan.
 
 SQL mengikuti gaya Hive/Impala. Periksa kembali hasil sebelum menjalankannya. Input diproses di server tempat aplikasi berjalan, jadi ikuti kebijakan perusahaan untuk data sensitif.
         """
