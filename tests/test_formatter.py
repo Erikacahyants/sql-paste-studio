@@ -151,6 +151,29 @@ def test_char_type_is_preserved_when_conversion_is_off():
     assert "AS CHAR(2)" in outputs["TXF"]
 
 
+def test_spaced_column_name_with_trailing_type_is_normalized():
+    cols = parse_schema("no rek string\nnama pos varchar(200)")
+    assert [(c.name, c.data_type) for c in cols] == [
+        ("no_rek", "string"), ("nama_pos", "varchar(200)")
+    ]
+    assert not validate_columns(cols, strict_type=True)
+    outputs = format_schema_sql(cols, char_to_varchar=False)
+    assert outputs["STG"] == "no_rek STRING,\nnama_pos STRING"
+    assert "CAST(TRIM(no_rek) AS STRING) AS no_rek" in outputs["TXF"]
+    assert outputs["SRI"] == "no_rek STRING,\nnama_pos VARCHAR(200)"
+
+
+def test_spaced_column_name_in_table_cells_and_hive_describe():
+    assert parse_schema("no rek|@~string")[0].name == "no_rek"
+    result = parse_hive("| col_name | data_type |\n| no rek | string |")
+    assert [(c.name, c.data_type) for c in result.columns] == [("no_rek", "string")]
+    assert not result.warnings
+    ddl = parse_hive("CREATE TABLE db.contoh (`no rek` string, `nama pos` varchar(200))")
+    assert [(c.name, c.data_type) for c in ddl.columns] == [
+        ("no_rek", "string"), ("nama_pos", "varchar(200)")
+    ]
+
+
 def test_reverse_hive_create_table_ignores_table_options_and_comments():
     raw = """CREATE EXTERNAL TABLE IF NOT EXISTS db.contoh (
       `PERIODE` varchar(100) COMMENT 'bulan',

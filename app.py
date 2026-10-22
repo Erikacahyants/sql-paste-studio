@@ -107,7 +107,7 @@ with tab_schema:
             "Teks schema", key="schema_text", height=290,
             placeholder="PERIODE varchar(100)\nSALDO decimal(18,2)\nTGL date",
         )
-        st.caption("Bisa juga: PERIODE|@~varchar|@~100, daftar A|B|C, atau beberapa deklarasi dipisahkan koma.")
+        st.caption("Bisa juga: PERIODE|@~varchar|@~100, daftar A|B|C, atau `no rek string` (spasi nama jadi underscore).")
         with st.expander("Pengaturan SQL"):
             convert_char = st.toggle("Ubah CHAR menjadi VARCHAR", value=False)
             quote_schema = st.toggle("Gunakan backtick", value=False)
@@ -209,7 +209,7 @@ with tab_help:
         """
 1. **Paste nama dan tipe.** Contoh: `PERIODE varchar(100)` dan `SALDO decimal(18,2)`, satu per baris. Boleh juga dipisahkan koma dalam satu baris.
 2. **Pilih pemisah bila perlu.** Otomatis mengenali TAB, `|@~`, `|`, dan koma. Pilih **Kustom** untuk pemisah lain. Format tabel seperti `PERIODE|@~varchar|@~100` juga didukung.
-3. **Periksa pratinjau.** Nama tanpa tipe memakai `STRING`. Spasi berlebih, baris kosong, dan pemisah di tepi input dirapikan.
+3. **Periksa pratinjau.** Nama tanpa tipe memakai `STRING`. Nama seperti `no rek string` dibaca sebagai `no_rek STRING`. Spasi berlebih, baris kosong, dan pemisah di tepi input dirapikan.
 4. **Salin hasil.** STG berisi `STRING`, TXF berisi `CAST(TRIM(...))`, dan SRI memakai tipe input. Ketiganya langsung tampil.
 
 **Reverse SQL Hive:** paste `CREATE VIEW ... AS SELECT`, `CREATE TABLE` / `SHOW CREATE TABLE`, atau hasil `DESCRIBE` dari Hive/Beeline. Tabel `createtab_stmt` hasil copy Hive akan dibuka. Nama VIEW/TABLE dan tabel sumber pada `FROM` ditampilkan. Ekspresi `CAST(TRIM(...))` dan `TO_DATE(...)` dibaca, lalu SQL view, STG, TXF, dan SRI ditampilkan.

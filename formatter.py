@@ -15,6 +15,11 @@ DECL_RE = re.compile(
     r"(?P<type>[A-Za-z][A-Za-z0-9_ ]*(?:\s*\(\s*\d+\s*(?:,\s*\d+\s*)?\))?)"
     r"(?:\s+COMMENT\s+['\"].*?['\"])?\s*,?\s*$", re.I
 )
+LOOSE_DECL_RE = re.compile(
+    r"^\s*(?P<name>.+)\s+(?P<type>[A-Za-z][A-Za-z0-9_]*"
+    r"(?:\s*\(\s*\d+\s*(?:,\s*\d+\s*)?\))?)"
+    r"(?:\s+COMMENT\s+['\"].*?['\"])?\s*,?\s*$", re.I,
+)
 IDENT_PART = r"(?:`[A-Za-z_][A-Za-z0-9_]*`|[A-Za-z_][A-Za-z0-9_]*)"
 IDENT_PATH = rf"{IDENT_PART}(?:\s*\.\s*{IDENT_PART})*"
 CAST_SELECT_RE = re.compile(
@@ -127,6 +132,10 @@ def _remove_quotes(value: str) -> str:
     return value.strip().strip("`\"'").strip()
 
 
+def _normalize_name(value: str) -> str:
+    return re.sub(r"\s+", "_", _remove_quotes(value))
+
+
 def _sql_decl(line: str) -> Column | None:
     # Parse one declaration, e.g. `PRF_ID` CHAR(2), or SAP_DATE DATE.
     match = DECL_RE.fullmatch(line.strip().rstrip(","))
@@ -142,7 +151,17 @@ def _sql_decl(line: str) -> Column | None:
 def _schema_decl(line: str) -> Column | None:
     """Keep even unknown type names so strict validation can report them."""
     match = DECL_RE.fullmatch(line.strip().rstrip(","))
-    return Column(match.group("name"), match.group("type").strip()) if match else None
+    if match:
+        data_type = match.group("type").strip()
+        parsed_type = TYPE_RE.fullmatch(data_type)
+        if parsed_type and parsed_type.group("base").strip().upper() in KNOWN_TYPES:
+            return Column(_normalize_name(match.group("name")), data_type)
+    loose = LOOSE_DECL_RE.fullmatch(line)
+    if loose:
+        data_type = loose.group("type").strip()
+        if data_type.split("(", 1)[0].strip().upper() in KNOWN_TYPES:
+            return Column(_normalize_name(loose.group("name")), data_type)
+    return Column(_normalize_name(match.group("name")), match.group("type").strip()) if match else None
 
 
 def _parenthesized_block(raw: str, opening: int) -> tuple[str, int] | None:
@@ -303,9 +322,10 @@ def parse_hive(raw: str) -> HiveParseResult:
                     continue
         if not cells or not cells[0]:
             continue
-        name = _remove_quotes(cells[0]).lstrip("# ")
-        if re.match(r"^(?:Partition Information|Detailed Table Information)$", name, re.I):
+        raw_name = _remove_quotes(cells[0]).lstrip("# ")
+        if re.match(r"^(?:Partition Information|Detailed Table Information)$", raw_name, re.I):
             break
+        name = _normalize_name(raw_name)
         if name.lower() in HEADER_NAMES or name.lower() in {"col_name", "column name"}:
             in_data = True
             continue
@@ -326,7 +346,7 @@ def _looks_typed(cells: list[str]) -> bool:
 
 
 def _from_schema_cells(cells: list[str]) -> Column:
-    name = _remove_quotes(cells[0])
+    name = _normalize_name(cells[0])
     t = cells[1].strip() if len(cells) > 1 else "STRING"
     if not t:
         t = "STRING"
