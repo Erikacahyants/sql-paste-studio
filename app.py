@@ -149,7 +149,8 @@ with tab_schema:
             for title, description in [
                 ("STG", "Semua STRING"), ("TXF", "CAST + TRIM"), ("SRI", "Tipe asli"),
             ]:
-                st.markdown(f"**{title}** · {description}")
+                row_count = len(outputs[title].splitlines())
+                st.markdown(f"**{title}** · {description} · **{row_count} baris SQL**")
                 st.code(outputs[title], language="sql", wrap_lines=True)
             st.caption("Salin tiap blok lewat ikon di kanan atasnya.")
         elif schema_errors:
@@ -200,7 +201,8 @@ with tab_hive:
         show_errors(hive_result.warnings + hive_errors)
         if hive_result.columns and not hive_errors and not hive_result.warnings:
             if hive_result.clean_sql:
-                st.markdown("**SQL VIEW rapi** · hasil reverse dari Hive")
+                row_count = len(hive_result.clean_sql.splitlines())
+                st.markdown(f"**SQL VIEW rapi** · hasil reverse dari Hive · **{row_count} baris SQL**")
                 st.code(hive_result.clean_sql, language="sql", wrap_lines=True)
             hive_outputs = format_schema_sql(
                 hive_result.columns, quote=hive_quote,
@@ -209,7 +211,8 @@ with tab_hive:
             for title, description in [
                 ("STG", "Semua STRING"), ("TXF", "CAST + TRIM"), ("SRI", "Kolom bertipe rapi"),
             ]:
-                st.markdown(f"**{title}** · {description}")
+                row_count = len(hive_outputs[title].splitlines())
+                st.markdown(f"**{title}** · {description} · **{row_count} baris SQL**")
                 st.code(hive_outputs[title], language="sql", wrap_lines=True)
             st.caption("Salin tiap blok lewat ikon di kanan atasnya.")
         elif hive_errors or hive_result.warnings:
@@ -224,7 +227,7 @@ with tab_help:
 1. **Paste header atau nama dan tipe.** Header seperti `PERIODE|NO REK|SALDO` otomatis menjadi tiga kolom STRING. Untuk tipe khusus, tulis `PERIODE varchar(100)` dan `SALDO decimal(18,2)`.
 2. **Pilih pemisah bila perlu.** Otomatis mengenali TAB, `|@~`, `|`, dan koma. Pilih **Kustom** untuk pemisah lain. Format tabel seperti `PERIODE|@~varchar|@~100` juga didukung.
 3. **Periksa pratinjau.** Nama tanpa tipe memakai `STRING`. Nama seperti `no rek string` dibaca sebagai `no_rek STRING`. Spasi berlebih, baris kosong, dan pemisah di tepi input dirapikan.
-4. **Salin hasil.** STG berisi `STRING`, TXF berisi `CAST(TRIM(...))`, dan SRI memakai tipe input. Ketiganya langsung tampil.
+4. **Salin hasil.** STG berisi `STRING`, TXF berisi `CAST(TRIM(...))`, dan SRI memakai tipe input. Jumlah baris tampil di atas setiap blok; angka itu tidak ikut tersalin.
 
 **Reverse SQL Hive:** paste `CREATE VIEW ... AS SELECT`, `CREATE TABLE` / `SHOW CREATE TABLE`, atau hasil `DESCRIBE` dari Hive/Beeline. Tabel `createtab_stmt` hasil copy Hive akan dibuka. Nama VIEW/TABLE dan tabel sumber pada `FROM` ditampilkan. Ekspresi `CAST(TRIM(...))` dan `TO_DATE(...)` dibaca, lalu SQL view, STG, TXF, dan SRI ditampilkan.
 
