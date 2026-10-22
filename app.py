@@ -46,6 +46,7 @@ SCHEMA_SAMPLE = """PERIODE varchar(100)
 KODE_CABANG varchar(20)
 SALDO decimal(18,2)
 TGL date"""
+HEADER_SAMPLE = "PERIODE|KODE_CABANG|NO REK|SALDO"
 HIVE_SAMPLE = """| createtab_stmt |
 | -------------- |
 | CREATE VIEW `prd_txf_datalake`.`contoh` AS SELECT |
@@ -74,12 +75,18 @@ def delimiter_picker(key: str) -> str | None:
     return {"Otomatis": "auto", "TAB": "\t", "Koma": ",", "Baris baru": "\n"}.get(choice, choice)
 
 
-def input_actions(key: str, sample: str) -> None:
-    example, clear = st.columns(2)
+def input_actions(key: str, sample: str, header_sample: str | None = None) -> None:
+    buttons = st.columns(3 if header_sample else 2)
+    example, clear = buttons[0], buttons[-1]
     with example:
-        if st.button("Isi contoh", key=f"{key}_example", use_container_width=True):
+        if st.button("Contoh bertipe" if header_sample else "Isi contoh", key=f"{key}_example", use_container_width=True):
             st.session_state[f"{key}_text"] = sample
             st.rerun()
+    if header_sample:
+        with buttons[1]:
+            if st.button("Contoh header", key=f"{key}_header_example", use_container_width=True):
+                st.session_state[f"{key}_text"] = header_sample
+                st.rerun()
     with clear:
         if st.button("Bersihkan", key=f"{key}_clear", use_container_width=True):
             st.session_state[f"{key}_text"] = ""
@@ -100,14 +107,18 @@ with tab_schema:
     with left, st.container(border=True):
         st.markdown('<div class="step">01 / Input</div>', unsafe_allow_html=True)
         st.subheader("Daftar kolom dan tipe")
-        st.markdown('<div class="section-note">Contoh: PERIODE varchar(100), satu kolom per baris. Nama tanpa tipe dianggap STRING.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-note">Paste header dengan delimiter, atau daftar nama dan tipe. Header tanpa tipe otomatis menjadi STRING.</div>', unsafe_allow_html=True)
+        schema_input_mode = st.selectbox(
+            "Bentuk input", ["Deteksi otomatis", "Header saja"],
+            help="Pilih Header saja bila teks yang dipaste adalah baris nama kolom dari Excel atau file data.",
+        )
         schema_delimiter = delimiter_picker("schema")
-        input_actions("schema", SCHEMA_SAMPLE)
+        input_actions("schema", SCHEMA_SAMPLE, HEADER_SAMPLE)
         schema_raw = st.text_area(
             "Teks schema", key="schema_text", height=290,
             placeholder="PERIODE varchar(100)\nSALDO decimal(18,2)\nTGL date",
         )
-        st.caption("Bisa juga: PERIODE|@~varchar|@~100, daftar A|B|C, atau `no rek string` (spasi nama jadi underscore).")
+        st.caption("Contoh header: A|B|C, A|@~B|@~C, atau dari Excel (TAB). Nama ber-spasi jadi underscore.")
         with st.expander("Pengaturan SQL"):
             convert_char = st.toggle("Ubah CHAR menjadi VARCHAR", value=False)
             quote_schema = st.toggle("Gunakan backtick", value=False)
@@ -115,7 +126,10 @@ with tab_schema:
     with right, st.container(border=True):
         st.markdown('<div class="step">02 / Periksa & salin</div>', unsafe_allow_html=True)
         st.subheader("Hasil otomatis")
-        schema_cols = parse_schema(schema_raw, delimiter=schema_delimiter) if schema_delimiter else []
+        schema_cols = parse_schema(
+            schema_raw, delimiter=schema_delimiter,
+            input_mode="header" if schema_input_mode == "Header saja" else "auto",
+        ) if schema_delimiter else []
         schema_errors = validate_columns(schema_cols, strict_type=True)
         missing = sum(col.data_type.upper() == "STRING" for col in schema_cols)
         st.caption(f"{len(schema_cols)} kolom terbaca · {missing} tanpa tipe eksplisit → STRING")
@@ -207,7 +221,7 @@ with tab_help:
     st.subheader("Panduan singkat")
     st.markdown(
         """
-1. **Paste nama dan tipe.** Contoh: `PERIODE varchar(100)` dan `SALDO decimal(18,2)`, satu per baris. Boleh juga dipisahkan koma dalam satu baris.
+1. **Paste header atau nama dan tipe.** Header seperti `PERIODE|NO REK|SALDO` otomatis menjadi tiga kolom STRING. Untuk tipe khusus, tulis `PERIODE varchar(100)` dan `SALDO decimal(18,2)`.
 2. **Pilih pemisah bila perlu.** Otomatis mengenali TAB, `|@~`, `|`, dan koma. Pilih **Kustom** untuk pemisah lain. Format tabel seperti `PERIODE|@~varchar|@~100` juga didukung.
 3. **Periksa pratinjau.** Nama tanpa tipe memakai `STRING`. Nama seperti `no rek string` dibaca sebagai `no_rek STRING`. Spasi berlebih, baris kosong, dan pemisah di tepi input dirapikan.
 4. **Salin hasil.** STG berisi `STRING`, TXF berisi `CAST(TRIM(...))`, dan SRI memakai tipe input. Ketiganya langsung tampil.

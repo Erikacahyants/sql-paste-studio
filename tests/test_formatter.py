@@ -174,6 +174,33 @@ def test_spaced_column_name_in_table_cells_and_hive_describe():
     ]
 
 
+@pytest.mark.parametrize(
+    ("raw", "delimiter"),
+    [
+        ("PERIODE|NO REK|SALDO", "auto"),
+        ("PERIODE|NO REK|SALDO", "|"),
+        ("PERIODE|@~NO REK|@~SALDO", "auto"),
+        ("PERIODE|@~NO REK|@~SALDO", "|@~"),
+        ("PERIODE,NO REK,SALDO", "auto"),
+        ("PERIODE\tNO REK\tSALDO", "auto"),
+        ("PERIODE;;NO REK;;SALDO", ";;"),
+    ],
+)
+def test_header_with_delimiters_generates_all_sql(raw, delimiter):
+    cols = parse_schema(raw, delimiter=delimiter)
+    assert [c.name for c in cols] == ["PERIODE", "NO_REK", "SALDO"]
+    assert not validate_columns(cols, strict_type=True)
+    outputs = format_schema_sql(cols)
+    assert outputs["STG"] == "PERIODE STRING,\nNO_REK STRING,\nSALDO STRING"
+    assert "CAST(TRIM(NO_REK) AS STRING) AS NO_REK" in outputs["TXF"]
+    assert outputs["SRI"] == outputs["STG"]
+
+
+def test_header_only_mode_takes_first_row_of_pasted_data():
+    cols = parse_schema("PERIODE|NO REK|SALDO\n2026|123|100", input_mode="header")
+    assert [c.name for c in cols] == ["PERIODE", "NO_REK", "SALDO"]
+
+
 def test_reverse_hive_create_table_ignores_table_options_and_comments():
     raw = """CREATE EXTERNAL TABLE IF NOT EXISTS db.contoh (
       `PERIODE` varchar(100) COMMENT 'bulan',

@@ -5,6 +5,7 @@ Aplikasi web **Streamlit** untuk menghasilkan tiga blok SQL **STG / TXF / SRI** 
 ## Fitur
 
 - Pilih pemisah otomatis atau manual: `|`, `|@~`, TAB, koma, baris baru, atau teks kustom seperti `;;`.
+- Paste satu baris header seperti `PERIODE|NO REK|SALDO` untuk langsung membuat STG, TXF, dan SRI dengan tipe `STRING`. Pilih **Header saja** bila hasil paste juga memuat baris data; aplikasi mengambil baris headernya.
 - Paste deklarasi seperti `PERIODE varchar(100)` dan `SALDO decimal(18,2)`, satu per baris atau dipisahkan koma. Nama tanpa tipe memakai `STRING`.
 - Nama kolom dengan spasi seperti `no rek string` dibaca sebagai `no_rek STRING` agar menjadi identifier SQL yang valid.
 - Spasi berlebih, baris kosong, dan pemisah di tepi input dirapikan. Pratinjau memperlihatkan nama dan tipe yang benar-benar terbaca sebelum SQL disalin.

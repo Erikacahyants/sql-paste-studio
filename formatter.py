@@ -345,6 +345,13 @@ def _looks_typed(cells: list[str]) -> bool:
     return bool(value and value.group("base").strip().upper() in KNOWN_TYPES)
 
 
+def _has_known_type(column: Column | None) -> bool:
+    if column is None:
+        return False
+    value = TYPE_RE.fullmatch(column.data_type)
+    return bool(value and value.group("base").strip().upper() in KNOWN_TYPES)
+
+
 def _from_schema_cells(cells: list[str]) -> Column:
     name = _normalize_name(cells[0])
     t = cells[1].strip() if len(cells) > 1 else "STRING"
@@ -433,8 +440,12 @@ def parse_quick(raw: str, delimiter: str = "auto", multiline: str = "auto") -> l
     return [Column(v) for v in values if v]
 
 
-def parse_schema(raw: str, delimiter: str = "auto") -> list[Column]:
+def parse_schema(raw: str, delimiter: str = "auto", input_mode: str = "auto") -> list[Column]:
     """Extract typed fields from pipe/TSV/Markdown tables, declarations, or names."""
+    if input_mode not in {"auto", "header"}:
+        raise ValueError("Mode input tidak dikenali.")
+    if input_mode == "header":
+        return [Column(_normalize_name(col.name)) for col in parse_quick(raw, delimiter=delimiter)]
     lines = _clean_text(raw)
     if not lines:
         return []
@@ -445,8 +456,17 @@ def parse_schema(raw: str, delimiter: str = "auto") -> list[Column]:
     if delimiter in {"auto", ",", "\n"} and lines and all("|" not in ln and "\t" not in ln for ln in lines):
         declaration_parts = [_split_commas(ln) for ln in lines]
         flat_parts = [part for parts in declaration_parts for part in parts if part]
-        if flat_parts and all(_schema_decl(part) or IDENTIFIER_RE.fullmatch(_remove_quotes(part)) for part in flat_parts):
-            return [_schema_decl(part) or Column(_remove_quotes(part)) for part in flat_parts]
+        declarations = [_schema_decl(part) for part in flat_parts]
+        if flat_parts and any(_has_known_type(col) for col in declarations):
+            return [
+                col if _has_known_type(col) or (col and "(" in part)
+                else Column(_normalize_name(part))
+                for part, col in zip(flat_parts, declarations)
+            ]
+        if len(flat_parts) == 1 and declarations[0]:
+            return [declarations[0]]
+        if flat_parts and all(IDENTIFIER_RE.fullmatch(_remove_quotes(part)) for part in flat_parts):
+            return [Column(_normalize_name(part)) for part in flat_parts]
     rows = [_cells(ln, delimiter) for ln in lines]
     if rows and rows[0] and rows[0][0].lower() in HEADER_NAMES:
         rows = rows[1:]
@@ -454,10 +474,10 @@ def parse_schema(raw: str, delimiter: str = "auto") -> list[Column]:
         return []
     if len(rows) == 1 and not _looks_typed(rows[0]):
         decl = _sql_decl(lines[0])
-        return [decl] if decl else [Column(_remove_quotes(s)) for s in rows[0] if s.strip()]
+        return [decl] if decl else [Column(_normalize_name(s)) for s in rows[0] if s.strip()]
     if is_md and rows and all(len(r) >= 2 for r in rows) and not any(_looks_typed(r) for r in rows):
         # Header-only MD table, not typed schema.
-        return [Column(_remove_quotes(s)) for s in rows[0] if s.strip()]
+        return [Column(_normalize_name(s)) for s in rows[0] if s.strip()]
     result: list[Column] = []
     for row in rows:
         if not row or not row[0]:
