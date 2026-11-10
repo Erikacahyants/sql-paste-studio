@@ -14,6 +14,17 @@ Aplikasi web **Streamlit** untuk menghasilkan tiga blok SQL **STG / TXF / SRI** 
 - CHAR(n) dapat diganti dengan VARCHAR(n) pada SRI/TXF bila opsi diaktifkan.
 - SQL langsung tampil dan bisa disalin lewat ikon salin bawaan `st.code` (pojok kanan atas blok kode).
 - Validasi nama kolom, kolom duplikat, tipe yang belum lengkap, serta sel schema yang salah format.
+- Tab **Table Masking** menerima SQL atau teks shell script untuk menyamarkan database, tabel, IPv4/IPv6, serta user/host SSH. Alias konsisten per input, hasil bisa disalin atau di-download sebagai `masked_script.sh`.
+
+## Table Masking
+
+1. Buka tab **Table Masking**, lalu paste script atau klik **Isi contoh**.
+2. Database dan tabel dideteksi dari konteks SQL umum (`USE`, `CREATE TABLE/VIEW`, `FROM`, `JOIN`, `INSERT INTO`, `INSERT OVERWRITE TABLE`, dan lainnya), URL JDBC Hive/MySQL/PostgreSQL, serta assignment seperti `DB_NAME`, `DATABASE`, `TABLE_NAME`, atau `SOURCE_TBL`.
+3. Opsi IP dan SSH aktif secara default. SSH mencakup `user@host`, host langsung, opsi `-l`, `-J`, `-o HostName` / `User` / `ProxyJump`, serta variabel `SSH_HOST` / `SSH_USER` dan `REMOTE_HOST` / `REMOTE_USER`.
+4. Isi **Nama tambahan yang perlu dimasking** untuk pola yang belum terbaca, satu nilai literal per baris. Nilai berulang diganti alias yang sama seperti `DB_001`, `TABLE_001`, `IP_001`, `HOST_001`, dan `USER_001`.
+5. Periksa hasil, lalu salin blok kode atau download. Mapping berisi nama asli tersedia di expander terpisah dan tidak dimasukkan ke file hasil.
+
+Deteksi ini memakai heuristik, bukan parser SQL/shell lengkap. Nama dinamis, daftar tabel dengan koma, atau sintaks khusus dapat memerlukan input tambahan. Penggantian literal bersifat case-sensitive, mengikuti batas kata, dan berlaku juga dalam komentar/string. Password, private key, dan credential lain tidak otomatis dimasking; tambahkan nilai yang perlu disamarkan secara manual. Script hanya diproses sebagai teks, tidak dijalankan, dan tidak membuka koneksi SSH. Hasil ditujukan untuk dibagikan sebagai contoh, bukan langsung dijalankan.
 
 ## Jalankan lokal
 
@@ -28,7 +39,7 @@ Browser akan membuka `http://localhost:8501`.
 
 ## Deploy Streamlit Community Cloud
 
-1. Upload semua file/folder (`app.py`, `formatter.py`, `requirements.txt`, `.streamlit/config.toml`) ke sebuah repository GitHub.
+1. Upload semua file/folder (`app.py`, `formatter.py`, `masking.py`, `requirements.txt`, `.streamlit/config.toml`) ke sebuah repository GitHub.
 2. Di https://share.streamlit.io buka **Create app** → **Deploy a public app from GitHub**.
 3. Pilih repo, branch, dan `app.py` sebagai entry point, lalu tekan **Deploy**.
 4. Untuk data internal perusahaan, **jangan deploy publik**; pakai server internal atau penerapan privat sesuai kebijakan keamanan organisasi.

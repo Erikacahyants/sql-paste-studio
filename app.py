@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import streamlit as st
+from masking import mask_text
 
 from formatter import (
     format_schema_sql,
@@ -58,6 +59,20 @@ HIVE_SAMPLE = """| createtab_stmt |
 st.session_state.setdefault("schema_text", SCHEMA_SAMPLE)
 st.session_state.setdefault("hive_text", HIVE_SAMPLE)
 
+MASKING_SAMPLE = '''#!/bin/bash
+DB_NAME="prd_finance"
+TABLE_NAME="daily_balance"
+SSH_USER="etl_user"
+SSH_HOST="warehouse.internal"
+ssh -p 22 "${SSH_USER}@${SSH_HOST}" <<'REMOTE'
+beeline -u 'jdbc:hive2://10.20.30.40:10000/prd_finance' -e "
+INSERT OVERWRITE TABLE prd_finance.daily_balance
+SELECT * FROM raw_finance.transactions;
+"
+REMOTE
+'''
+st.session_state.setdefault("masking_text", "")
+
 DELIMITER_CHOICES = ["Otomatis", "|", "|@~", "TAB", "Koma", "Baris baru", "Kustom"]
 
 
@@ -100,7 +115,7 @@ def show_errors(errors: list[str]) -> None:
         st.error(f"Ada {len(errors) - 8} masalah lain. Periksa input dan pratinjau kolom.")
 
 
-tab_schema, tab_hive, tab_help = st.tabs(["Generator STG / TXF / SRI", "Reverse SQL Hive", "Panduan"])
+tab_schema, tab_hive, tab_masking, tab_help = st.tabs(["Generator STG / TXF / SRI", "Reverse SQL Hive", "Table Masking", "Panduan"])
 
 with tab_schema:
     left, right = st.columns([1, 1], gap="large")
@@ -220,6 +235,43 @@ with tab_hive:
         else:
             st.info("Paste SQL atau hasil DESCRIBE dari Hive di sebelah kiri.")
 
+with tab_masking:
+    left, right = st.columns([1, 1], gap="large")
+    with left, st.container(border=True):
+        st.markdown('<div class="step">01 / Paste script</div>', unsafe_allow_html=True)
+        st.subheader("Table Masking")
+        st.caption("Paste SQL atau teks shell script untuk menyamarkan nama database, tabel, IP, dan user/host SSH.")
+        input_actions("masking", MASKING_SAMPLE)
+        masking_raw = st.text_area("SQL / shell script", key="masking_text", height=360)
+        masking_ip = st.toggle("Masking alamat IP", value=True)
+        masking_ssh = st.toggle("Masking user dan host SSH", value=True)
+        with st.expander("Nama tambahan yang perlu dimasking"):
+            st.caption("Satu nilai asli per baris. Gunakan ini untuk nama dinamis atau pola yang belum terdeteksi otomatis.")
+            masking_dbs = st.text_area("Nama database tambahan", key="masking_dbs")
+            masking_tables = st.text_area("Nama tabel tambahan", key="masking_tables")
+            masking_extra = st.text_area("Teks lainnya (misalnya path atau credential)", key="masking_extra")
+        st.caption("Hanya mengolah teks; script tidak dijalankan dan koneksi SSH tidak dibuka.")
+    with right, st.container(border=True):
+        st.markdown('<div class="step">02 / Periksa & salin</div>', unsafe_allow_html=True)
+        st.subheader("Script hasil masking")
+        if masking_raw.strip():
+            masked = mask_text(
+                masking_raw, tables=masking_tables, databases=masking_dbs,
+                extra=masking_extra, mask_ip=masking_ip, mask_ssh=masking_ssh,
+            )
+            st.caption(f"{len(masked.mappings)} nilai unik dimasking. Nilai yang sama memakai alias yang sama.")
+            st.code(masked.text, language="bash", wrap_lines=True)
+            st.download_button("Download hasil masking", data=masked.text,
+                               file_name="masked_script.sh", mime="text/plain")
+            if masked.mappings:
+                with st.expander("Lihat mapping (berisi nama asli)"):
+                    st.dataframe(masked.mappings, hide_index=True, use_container_width=True)
+            else:
+                st.info("Belum ada nilai yang terdeteksi. Isi nama tambahan bila perlu.")
+            st.warning("Deteksi otomatis bersifat best-effort. Periksa hasil sebelum dibagikan; password, key, nama dinamis, dan pola SQL/SSH lain bisa belum tersamarkan. Tambahkan nilai yang masih terlihat lewat nama tambahan.")
+        else:
+            st.info("Paste script di sebelah kiri atau klik Isi contoh.")
+
 with tab_help:
     st.subheader("Panduan singkat")
     st.markdown(
@@ -230,6 +282,8 @@ with tab_help:
 4. **Salin hasil.** STG berisi `STRING`, TXF berisi `CAST(TRIM(...))`, dan SRI memakai tipe input. Jumlah baris tampil di atas setiap blok; angka itu tidak ikut tersalin.
 
 **Reverse SQL Hive:** paste `CREATE VIEW ... AS SELECT`, `CREATE TABLE` / `SHOW CREATE TABLE`, atau hasil `DESCRIBE` dari Hive/Beeline. Tabel `createtab_stmt` hasil copy Hive akan dibuka. Nama VIEW/TABLE dan tabel sumber pada `FROM` ditampilkan. Ekspresi `CAST(TRIM(...))` dan `TO_DATE(...)` dibaca, lalu SQL view, STG, TXF, dan SRI ditampilkan.
+
+**Table Masking:** paste SQL atau shell script. Database/tabel pada konteks SQL umum dan variabel seperti `DB_NAME` / `TABLE_NAME` diganti alias `DB_001` / `TABLE_001`. Opsi IP dan SSH menyamarkan alamat IP serta user/host SSH. Tambahkan nilai yang belum terdeteksi, satu per baris. Penggantian literal bersifat case-sensitive dan juga berlaku di komentar/string. Salin blok hasil atau download script; mapping nama asli hanya ditampilkan di expander terpisah. Periksa hasil sebelum membagikan script.
 
 SQL mengikuti gaya Hive/Impala. Periksa kembali hasil sebelum menjalankannya. Input diproses di server tempat aplikasi berjalan, jadi ikuti kebijakan perusahaan untuk data sensitif.
         """
