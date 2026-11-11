@@ -33,6 +33,8 @@ Deteksi ini memakai heuristik, bukan parser SQL/shell lengkap. Nama dinamis, daf
 
 ## Masking Hasil Query Impala
 
+Pemulihan alias SQL/script mendukung suffix underscore: `TABLE_001_test` menjadi nama tabel asli dengan `_test`, dan `PATH_001_test` menjadi path asli dengan `_test`. Huruf besar/kecil alias boleh berubah. Alias yang nomornya berbeda atau memakai prefix baru tidak ditebak.
+
 Tab **Masking Hasil Query** menerima hasil data (baris dan kolom), bukan SQL. Copy hasil Impala beserta header dalam format TAB, CSV, atau tabel `|`, lalu pilih **Kolom sensitif yang disamarkan**. Hanya isi kolom pilihan yang diganti alias; header dan kolom lain tetap asli. Nilai berulang dalam satu kolom mendapat alias yang sama, sel kosong tetap kosong, dan angka nol di depan tetap dipertahankan pada kolom yang tidak dipilih. Hasil tersedia untuk disalin atau di-download sebagai TSV.
 
 Kolom sensitif otomatis dipilih berdasarkan nama header seperti `no`, `nomor`, `number`, `key`, `cif`, `name`/`nama`, `address`/`alamat`, rekening, email, telepon, NIK, dan NPWP. Pilihan bisa ditambah atau dilepas manual dan dipertahankan selama header tidak berubah. Header baru memicu deteksi ulang; tombol **Pilih ulang hasil deteksi otomatis** mengembalikan pilihan otomatis. Deteksi ini hanya berdasarkan nama kolom, bukan jaminan semua data sensitif terdeteksi.

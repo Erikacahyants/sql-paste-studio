@@ -256,7 +256,7 @@ with tab_masking:
             "Query yang masih memakai alias", key="restore_text", height=260,
             placeholder="SELECT * FROM DB_001.TABLE_001;",
         )
-        st.caption("Gunakan alias dari hasil masking (misalnya DB_001.TABLE_001). Alias yang diganti GPT menjadi db1.table1 tidak dapat dicocokkan otomatis. Pemulihan berlaku juga di komentar/string.")
+        st.caption("Gunakan alias dari hasil masking (misalnya DB_001.TABLE_001). Tambahan seperti TABLE_001_test atau PATH_001_test dipulihkan dengan suffix _test tetap utuh. Alias baru seperti db1.table1 tidak dikenali. Pemulihan berlaku juga di komentar/string.")
     with restore_right:
         if restore_raw.strip() and st.session_state["masking_mappings"]:
             restored = restore_text(restore_raw, st.session_state["masking_mappings"])

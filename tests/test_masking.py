@@ -127,8 +127,17 @@ def test_restore_gpt_query_quotes_case_and_unknown_aliases():
     assert restore_text(query, masked.mappings).text == (
         'SELECT t.id FROM `prod`.`orders` t JOIN DB_999.TABLE_999 x ON 1=1')
     assert restore_text('TABLE_001_backup xTABLE_001 $TABLE_001', masked.mappings).text == (
-        'TABLE_001_backup xTABLE_001 $TABLE_001')
+        'orders_backup xTABLE_001 $TABLE_001')
     assert restore_text(query, []).text == query
+
+
+def test_restore_alias_suffix_preserves_suffix_and_numeric_boundaries():
+    masked = mask_text('SELECT * FROM prod.orders; cat /srv/daily')
+    query = 'SELECT * FROM DB_001.TABLE_001_test; cat path_001_test_2026.csv'
+    assert restore_text(query, masked.mappings).text == (
+        'SELECT * FROM prod.orders_test; cat /srv/daily_test_2026.csv')
+    unknown = 'PATH_0010_test PATH_001test PREFIX_PATH_001_test PATH_999_test'
+    assert restore_text(unknown, masked.mappings).text == unknown
 
 
 def test_restore_round_trip_and_no_cascading_aliases():

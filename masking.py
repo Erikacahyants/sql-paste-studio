@@ -228,7 +228,7 @@ def mask_text(raw: str, *, tables: str = '', databases: str = '',
 
 
 def restore_text(raw: str, mappings: list[dict[str, str]]) -> MaskingResult:
-    """Restore exact alias tokens in one pass, including GPT-lowercased aliases.
+    """Restore aliases in one pass, including lowercase and underscore suffixes.
 
     As with masking, replacement also applies to comments and string literals.
     Unknown aliases are left unchanged; no SQL or shell code is executed.
@@ -238,7 +238,7 @@ def restore_text(raw: str, mappings: list[dict[str, str]]) -> MaskingResult:
         return MaskingResult(raw, [])
     pattern = re.compile(r'(?<![\w$])(?:' + '|'.join(
         re.escape(alias) for alias in sorted(aliases, key=len, reverse=True)
-    ) + r')(?![\w$])', re.I)
+    ) + r')(?=_|(?![\w$]))', re.I)
     used: set[str] = set()
 
     def replace(match: re.Match) -> str:
