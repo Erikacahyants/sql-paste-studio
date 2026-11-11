@@ -5,6 +5,16 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from result_masking import mask_result, parse_result, detect_sensitive_columns
+from formatter import parse_schema
+
+
+@pytest.mark.parametrize('separator', ['\t', ',', ';', '|', '||', '|@~'])
+def test_auto_delimiters_without_ui_settings(separator):
+    header = separator.join(['nama', 'rekening', 'saldo'])
+    data = separator.join(['Budi', '00123', '100'])
+    assert [column.name for column in parse_schema(header)] == ['nama', 'rekening', 'saldo']
+    assert parse_result(header + '\n' + data) == (
+        ['nama', 'rekening', 'saldo'], [['Budi', '00123', '100']])
 
 
 def test_detect_sensitive_headers_in_common_naming_styles():

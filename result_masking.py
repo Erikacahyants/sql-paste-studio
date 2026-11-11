@@ -30,15 +30,15 @@ def parse_result(raw: str, delimiter: str = 'auto') -> tuple[list[str], list[lis
     text = raw.strip('\r\n')
     first = text.splitlines()[0]
     if delimiter == 'auto':
-        delimiter = next((sep for sep in ('\t', '|', ',') if sep in first), ',')
+        delimiter = next((sep for sep in ('\t', '|@~', '||', '|', ';', ',') if sep in first), ',')
         if re.fullmatch(r'\s*\+(?:[-+]+)\s*', first):
             delimiter = '|'
-    if delimiter == '|':
+    if delimiter in {'|', '||', '|@~'}:
         lines = []
         for line in text.splitlines():
             if re.fullmatch(r'\s*\+(?:[-+]+)\s*', line):
                 continue
-            cells = line.strip().removeprefix('|').removesuffix('|').split('|')
+            cells = line.strip().removeprefix(delimiter).removesuffix(delimiter).split(delimiter)
             if all(re.fullmatch(r'\s*:?-+:?\s*', cell) for cell in cells):
                 continue
             lines.append([cell.strip() for cell in cells])

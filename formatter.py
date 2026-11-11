@@ -110,7 +110,7 @@ def _cells(line: str, delimiter: str = "auto") -> list[str]:
     if _sql_decl(line):
         return [line]
     if delimiter == "auto":
-        delimiter = next((sep for sep in ("\t", "|@~", "|", ",") if sep in line), "\n")
+        delimiter = next((sep for sep in ("\t", "|@~", "||", "|", ";", ",") if sep in line), "\n")
     if not delimiter:
         raise ValueError("Delimiter tidak boleh kosong.")
     if delimiter == "\n":

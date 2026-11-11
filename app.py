@@ -33,7 +33,6 @@ st.markdown(
       .stTextArea textarea, .stCodeBlock code {font-family: Consolas, 'Courier New', monospace !important;}
       .stTextArea textarea {font-size: .92rem; line-height: 1.55;}
       .hero {padding: .6rem 0 1.8rem;}
-      .hero .eyebrow {color: #666B60; font-size: .8rem; font-weight: 500;}
       .hero h1 {font-size: 2.15rem; margin: .2rem 0 .4rem; line-height: 1.2; font-weight: 650;}
       .hero p {max-width: 740px; color: #62675D; font-size: .96rem; line-height: 1.6; margin: 0;}
       .step {color: #526747; font-size: .8rem; font-weight: 600;}
@@ -46,7 +45,6 @@ st.markdown(
       footer {visibility: hidden;}
     </style>
     <div class="hero">
-      <div class="eyebrow">Peralatan kerja data</div>
       <h1>BDE Tools</h1>
       <p>Buat SQL, rapikan schema, atau samarkan data sebelum dibagikan.</p>
     </div>
@@ -58,7 +56,6 @@ SCHEMA_SAMPLE = """PERIODE varchar(100)
 KODE_CABANG varchar(20)
 SALDO decimal(18,2)
 TGL date"""
-HEADER_SAMPLE = "PERIODE|KODE_CABANG|NO REK|SALDO"
 HIVE_SAMPLE = """| createtab_stmt |
 | -------------- |
 | CREATE VIEW `prd_txf_datalake`.`contoh` AS SELECT |
@@ -87,35 +84,12 @@ st.session_state.setdefault("masking_text", "")
 st.session_state.setdefault("masking_mappings", [])
 st.session_state.setdefault("restore_text", "")
 
-DELIMITER_CHOICES = ["Otomatis", "|", "|@~", "TAB", "Koma", "Baris baru", "Kustom"]
-
-
-def delimiter_picker(key: str) -> str | None:
-    choice = st.selectbox(
-        "Pemisah kolom", DELIMITER_CHOICES, key=f"{key}_delimiter",
-        help="Otomatis mendeteksi TAB, |@~, |, atau koma di setiap baris. Pilih Kustom untuk pemisah lain.",
-    )
-    if choice == "Kustom":
-        custom = st.text_input("Isi pemisah", key=f"{key}_custom", placeholder="Contoh: ; atau ||")
-        if not custom:
-            st.warning("Isi pemisah kustom terlebih dahulu.")
-            return None
-        return custom
-    return {"Otomatis": "auto", "TAB": "\t", "Koma": ",", "Baris baru": "\n"}.get(choice, choice)
-
-
-def input_actions(key: str, sample: str, header_sample: str | None = None) -> None:
-    buttons = st.columns(3 if header_sample else 2)
-    example, clear = buttons[0], buttons[-1]
+def input_actions(key: str, sample: str) -> None:
+    example, clear = st.columns(2)
     with example:
-        if st.button("Contoh bertipe" if header_sample else "Isi contoh", key=f"{key}_example", use_container_width=True):
+        if st.button("Isi contoh", key=f"{key}_example", use_container_width=True):
             st.session_state[f"{key}_text"] = sample
             st.rerun()
-    if header_sample:
-        with buttons[1]:
-            if st.button("Contoh header", key=f"{key}_header_example", use_container_width=True):
-                st.session_state[f"{key}_text"] = header_sample
-                st.rerun()
     with clear:
         if st.button("Bersihkan", key=f"{key}_clear", use_container_width=True):
             st.session_state[f"{key}_text"] = ""
@@ -137,28 +111,16 @@ with tab_schema:
         st.markdown('<div class="step">01 / Input</div>', unsafe_allow_html=True)
         st.subheader("Daftar kolom dan tipe")
         st.markdown('<div class="section-note">Paste header dengan delimiter, atau daftar nama dan tipe. Header tanpa tipe otomatis menjadi STRING.</div>', unsafe_allow_html=True)
-        schema_input_mode = st.selectbox(
-            "Bentuk input", ["Deteksi otomatis", "Header saja"],
-            help="Pilih Header saja bila teks yang dipaste adalah baris nama kolom dari Excel atau file data.",
-        )
-        schema_delimiter = delimiter_picker("schema")
-        input_actions("schema", SCHEMA_SAMPLE, HEADER_SAMPLE)
+        input_actions("schema", SCHEMA_SAMPLE)
         schema_raw = st.text_area(
             "Teks schema", key="schema_text", height=290,
             placeholder="PERIODE varchar(100)\nSALDO decimal(18,2)\nTGL date",
         )
         st.caption("Contoh header: A|B|C, A|@~B|@~C, atau dari Excel (TAB). Nama ber-spasi jadi underscore.")
-        with st.expander("Pengaturan SQL"):
-            convert_char = st.toggle("Ubah CHAR menjadi VARCHAR", value=False)
-            quote_schema = st.toggle("Gunakan backtick", value=False)
-            stg_comment = st.toggle("Tambahkan COMMENT di STG", value=False)
     with right, st.container(border=True):
         st.markdown('<div class="step">02 / Periksa & salin</div>', unsafe_allow_html=True)
         st.subheader("Hasil otomatis")
-        schema_cols = parse_schema(
-            schema_raw, delimiter=schema_delimiter,
-            input_mode="header" if schema_input_mode == "Header saja" else "auto",
-        ) if schema_delimiter else []
+        schema_cols = parse_schema(schema_raw)
         schema_errors = validate_columns(schema_cols, strict_type=True)
         missing = sum(col.data_type.upper() == "STRING" for col in schema_cols)
         st.caption(f"{len(schema_cols)} kolom terbaca · {missing} tanpa tipe eksplisit → STRING")
@@ -171,10 +133,7 @@ with tab_schema:
                 )
         show_errors(schema_errors)
         if schema_cols and not schema_errors:
-            outputs = format_schema_sql(
-                schema_cols, quote=quote_schema,
-                char_to_varchar=convert_char, stg_comment=stg_comment,
-            )
+            outputs = format_schema_sql(schema_cols)
             for title, description in [
                 ("STG", "Semua STRING"), ("TXF", "CAST + TRIM"), ("SRI", "Tipe asli"),
             ]:
@@ -183,8 +142,8 @@ with tab_schema:
                 st.code(outputs[title], language="sql", wrap_lines=True)
             st.caption("Salin tiap blok lewat ikon di kanan atasnya.")
         elif schema_errors:
-            st.warning("Perbaiki schema atau pemisah sebelum menyalin SQL.")
-        elif schema_delimiter:
+            st.warning("Periksa format schema sebelum menyalin SQL.")
+        else:
             st.info("Paste daftar kolom atau schema di sebelah kiri untuk melihat ketiga hasil.")
 
 with tab_hive:
@@ -199,10 +158,6 @@ with tab_hive:
             placeholder="CREATE TABLE db.nama_tabel (\n  PERIODE varchar(100),\n  SALDO decimal(18,2)\n);",
         )
         st.caption("Bisa paste tabel createtab_stmt seperti hasil copy Hive. Garis tabel dan header akan dibersihkan otomatis.")
-        with st.expander("Pengaturan SQL Hive"):
-            hive_convert_char = st.toggle("Ubah CHAR menjadi VARCHAR", value=False, key="hive_convert_char")
-            hive_quote = st.toggle("Gunakan backtick", value=False, key="hive_quote")
-            hive_stg_comment = st.toggle("Tambahkan COMMENT di STG", value=False, key="hive_stg_comment")
     with right, st.container(border=True):
         st.markdown('<div class="step">02 / Periksa & salin</div>', unsafe_allow_html=True)
         st.subheader("SQL yang sudah dirapikan")
@@ -233,10 +188,7 @@ with tab_hive:
                 row_count = len(hive_result.clean_sql.splitlines())
                 st.markdown(f"**SQL VIEW rapi** · hasil reverse dari Hive · **{row_count} baris SQL**")
                 st.code(hive_result.clean_sql, language="sql", wrap_lines=True)
-            hive_outputs = format_schema_sql(
-                hive_result.columns, quote=hive_quote,
-                char_to_varchar=hive_convert_char, stg_comment=hive_stg_comment,
-            )
+            hive_outputs = format_schema_sql(hive_result.columns)
             for title, description in [
                 ("STG", "Semua STRING"), ("TXF", "CAST + TRIM"), ("SRI", "Kolom bertipe rapi"),
             ]:
@@ -263,9 +215,6 @@ with tab_masking:
         st.caption("Paste SQL atau teks shell script untuk menyamarkan nama database, tabel, IP, user/host SSH, dan path folder/file.")
         input_actions("masking", MASKING_SAMPLE)
         masking_raw = st.text_area("SQL / shell script", key="masking_text", height=360)
-        masking_ip = st.toggle("Masking alamat IP", value=True)
-        masking_ssh = st.toggle("Masking user dan host SSH", value=True)
-        masking_paths = st.toggle("Masking path folder / file", value=True)
         st.caption("Contoh path: /x/x/bot/s/f_147/tXLON_102 menjadi PATH_001. Path yang sama memakai alias yang sama.")
         with st.expander("Nama tambahan yang perlu dimasking"):
             st.caption("Satu nilai asli per baris. Gunakan ini untuk nama dinamis atau pola yang belum terdeteksi otomatis.")
@@ -279,8 +228,7 @@ with tab_masking:
         if masking_raw.strip():
             masked = mask_text(
                 masking_raw, tables=masking_tables, databases=masking_dbs,
-                extra=masking_extra, mask_ip=masking_ip, mask_ssh=masking_ssh,
-                mask_paths=masking_paths,
+                extra=masking_extra,
                 mappings=st.session_state["masking_mappings"],
             )
             saved = {row["Asli"]: row for row in st.session_state["masking_mappings"]}
@@ -337,9 +285,8 @@ with tab_results:
             st.rerun()
         result_raw = st.text_area("Hasil query dari Impala", key="query_results_text", height=240,
                                   placeholder="nama\tno_rekening\tsaldo\nBudi\t0012345678\t150000")
-        result_separator = st.selectbox("Pemisah hasil query", ["Otomatis", "TAB", "Koma", "|"], key="query_results_separator")
         try:
-            result_headers, result_rows = parse_result(result_raw, {"Otomatis": "auto", "TAB": "\t", "Koma": ",", "|": "|"}[result_separator])
+            result_headers, result_rows = parse_result(result_raw)
         except ValueError as exc:
             st.error(str(exc))
         else:
@@ -377,13 +324,13 @@ with tab_help:
     st.markdown(
         """
 1. **Paste header atau nama dan tipe.** Header seperti `PERIODE|NO REK|SALDO` otomatis menjadi tiga kolom STRING. Untuk tipe khusus, tulis `PERIODE varchar(100)` dan `SALDO decimal(18,2)`.
-2. **Pilih pemisah bila perlu.** Otomatis mengenali TAB, `|@~`, `|`, dan koma. Pilih **Kustom** untuk pemisah lain. Format tabel seperti `PERIODE|@~varchar|@~100` juga didukung.
+2. **Format dibaca otomatis.** Paste dari Excel, CSV, atau tabel teks. TAB, `|@~`, `||`, `|`, koma, dan titik koma dikenali tanpa pengaturan. Format schema seperti `PERIODE|@~varchar|@~100` juga didukung.
 3. **Periksa pratinjau.** Nama tanpa tipe memakai `STRING`. Nama seperti `no rek string` dibaca sebagai `no_rek STRING`. Spasi berlebih, baris kosong, dan pemisah di tepi input dirapikan.
 4. **Salin hasil.** STG berisi `STRING`, TXF berisi `CAST(TRIM(...))`, dan SRI memakai tipe input. Jumlah baris tampil di atas setiap blok; angka itu tidak ikut tersalin.
 
 **Rapikan SQL Hive:** paste `CREATE VIEW ... AS SELECT`, `CREATE TABLE` / `SHOW CREATE TABLE`, atau hasil `DESCRIBE` dari Hive/Beeline. Tabel `createtab_stmt` hasil copy Hive akan dibuka. Nama VIEW/TABLE dan tabel sumber pada `FROM` ditampilkan. Ekspresi `CAST(TRIM(...))` dan `TO_DATE(...)` dibaca, lalu SQL view, STG, TXF, dan SRI ditampilkan.
 
-**Masking SQL / Script:** paste SQL atau shell script. Database/tabel pada konteks SQL umum dan variabel seperti `DB_NAME` / `TABLE_NAME` diganti alias `DB_001` / `TABLE_001`. Opsi IP dan SSH menyamarkan alamat IP serta user/host SSH. Tambahkan nilai yang belum terdeteksi, satu per baris. Penggantian literal bersifat case-sensitive dan juga berlaku di komentar/string. Salin blok hasil atau download script; mapping nama asli hanya ditampilkan di expander terpisah. Periksa hasil sebelum membagikan script.
+**Masking SQL / Script:** paste SQL atau shell script. Database/tabel pada konteks SQL umum dan variabel seperti `DB_NAME` / `TABLE_NAME` diganti alias `DB_001` / `TABLE_001`. Masking IP dan SSH otomatis menyamarkan alamat IP serta user/host SSH. Tambahkan nilai yang belum terdeteksi, satu per baris. Penggantian literal bersifat case-sensitive dan juga berlaku di komentar/string. Salin blok hasil atau download script; mapping nama asli hanya ditampilkan di expander terpisah. Periksa hasil sebelum membagikan script.
 
 SQL mengikuti gaya Hive/Impala. Periksa kembali hasil sebelum menjalankannya. Input diproses di server tempat aplikasi berjalan, jadi ikuti kebijakan perusahaan untuk data sensitif.
         """
