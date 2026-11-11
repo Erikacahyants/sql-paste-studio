@@ -13,32 +13,42 @@ from formatter import (
 )
 
 
-st.set_page_config(page_title="BDE Tools", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="BDE Tools", page_icon="🗂️", layout="wide")
 
 st.markdown(
     """
     <style>
-      :root {color-scheme: dark;}
-      .block-container {max-width: 1320px; padding-top: 2rem; padding-bottom: 3rem;}
-      h1, h2, h3 {letter-spacing: -.035em;}
+      :root {color-scheme: light;}
+      .block-container {max-width: 1240px; padding-top: 2rem; padding-bottom: 3rem;}
+      h1, h2, h3 {letter-spacing: -.025em;}
+      h3 {font-size: 1.25rem !important;}
       [data-testid="stHeader"] {background: transparent;}
-      [data-testid="stVerticalBlockBorderWrapper"] {border-color: #30415b; border-radius: 16px;}
-      [data-baseweb="tab-list"] {gap: .6rem;}
-      [data-baseweb="tab"] {border-radius: 10px 10px 0 0; padding: .8rem 1.2rem;}
+      [data-testid="stVerticalBlockBorderWrapper"] {border-color: #DADBD2; border-radius: 10px;}
+      [data-baseweb="tab-list"] {gap: 1.25rem; border-bottom: 1px solid #DADBD2;}
+      [data-baseweb="tab"] {padding: .75rem .2rem; white-space: nowrap;}
+      [data-baseweb="tab"][aria-selected="true"] {font-weight: 600;}
+      [data-baseweb="tab-panel"] {padding-top: 1.5rem;}
+      [data-testid="stTextArea"] textarea {background: #FFFFFF;}
+      [data-testid="stButton"] button, [data-testid="stDownloadButton"] button {border-radius: 6px;}
       .stTextArea textarea, .stCodeBlock code {font-family: Consolas, 'Courier New', monospace !important;}
       .stTextArea textarea {font-size: .92rem; line-height: 1.55;}
-      .hero {padding: 1.2rem 0 1.4rem;}
-      .hero .eyebrow {color: #70e3cb; font-size: .75rem; font-weight: 800; letter-spacing: .16em;}
-      .hero h1 {font-size: clamp(2.3rem, 4vw, 3.6rem); margin: .3rem 0 .45rem; line-height: 1.07;}
-      .hero p {max-width: 740px; color: #adbed3; font-size: 1.02rem; line-height: 1.6; margin: 0;}
-      .step {color: #70e3cb; font-size: .8rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;}
-      .section-note {color: #a9bad0; margin: -.1rem 0 1rem; font-size: .91rem;}
+      .hero {padding: .6rem 0 1.8rem;}
+      .hero .eyebrow {color: #666B60; font-size: .8rem; font-weight: 500;}
+      .hero h1 {font-size: 2.15rem; margin: .2rem 0 .4rem; line-height: 1.2; font-weight: 650;}
+      .hero p {max-width: 740px; color: #62675D; font-size: .96rem; line-height: 1.6; margin: 0;}
+      .step {color: #526747; font-size: .8rem; font-weight: 600;}
+      .section-note {color: #62675D; margin: -.1rem 0 1rem; font-size: .91rem;}
+      @media (max-width: 640px) {
+        .block-container {padding: 1.5rem 1rem;}
+        [data-baseweb="tab-list"] {gap: 1rem;}
+        .hero h1 {font-size: 1.8rem;}
+      }
       footer {visibility: hidden;}
     </style>
     <div class="hero">
-      <div class="eyebrow">DATA ENGINEERING / SQL UTILITY</div>
-      <h1>BDE Tools <span style="color:#70e3cb">⚡</span></h1>
-      <p>Sekali paste daftar kolom atau schema, langsung dapat STG, TXF, dan SRI. Periksa hasilnya, lalu salin blok yang dibutuhkan.</p>
+      <div class="eyebrow">Peralatan kerja data</div>
+      <h1>BDE Tools</h1>
+      <p>Buat SQL, rapikan schema, atau samarkan data sebelum dibagikan.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -119,7 +129,7 @@ def show_errors(errors: list[str]) -> None:
         st.error(f"Ada {len(errors) - 8} masalah lain. Periksa input dan pratinjau kolom.")
 
 
-tab_schema, tab_hive, tab_masking, tab_results, tab_help = st.tabs(["Generator STG / TXF / SRI", "Reverse SQL Hive", "Table Masking", "Masking Hasil Query", "Panduan"])
+tab_schema, tab_hive, tab_masking, tab_results, tab_help = st.tabs(["Buat SQL", "Rapikan SQL Hive", "Masking SQL / Script", "Masking Hasil Query", "Panduan"])
 
 with tab_schema:
     left, right = st.columns([1, 1], gap="large")
@@ -249,7 +259,7 @@ with tab_masking:
     left, right = st.columns([1, 1], gap="large")
     with left, st.container(border=True):
         st.markdown('<div class="step">01 / Paste script</div>', unsafe_allow_html=True)
-        st.subheader("Table Masking")
+        st.subheader("Samarkan SQL atau script")
         st.caption("Paste SQL atau teks shell script untuk menyamarkan nama database, tabel, IP, user/host SSH, dan path folder/file.")
         input_actions("masking", MASKING_SAMPLE)
         masking_raw = st.text_area("SQL / shell script", key="masking_text", height=360)
@@ -290,12 +300,12 @@ with tab_masking:
             st.info("Paste script di sebelah kiri atau klik Isi contoh.")
 
     st.divider()
-    st.subheader("Masukkan Query")
+    st.subheader("Kembalikan nama asli")
     st.caption(f'{len(st.session_state["masking_mappings"])} mapping tersimpan di sesi. Bersihkan input masking tidak menghapus mapping; gunakan tombol Hapus mapping untuk memulai pekerjaan baru.')
     restore_left, restore_right = st.columns(2, gap="large")
     with restore_left:
         restore_raw = st.text_area(
-            "Paste query disini", key="restore_text", height=260,
+            "Query yang masih memakai alias", key="restore_text", height=260,
             placeholder="SELECT * FROM DB_001.TABLE_001;",
         )
         st.caption("Gunakan alias dari hasil masking (misalnya DB_001.TABLE_001). Alias yang diganti GPT menjadi db1.table1 tidak dapat dicocokkan otomatis. Pemulihan berlaku juga di komentar/string.")
@@ -315,41 +325,52 @@ with tab_masking:
 with tab_results:
     st.subheader("Masking Hasil Query Impala")
     st.caption("Paste hasil data beserta header. Kolom sensitif otomatis dipilih berdasarkan namanya; tambahkan atau lepas pilihan sesuai kebutuhan. Mendukung copy TAB, CSV, dan tabel dengan pemisah |.")
-    if st.button("Hapus input hasil query", key="clear_query_results"):
-        st.session_state["query_results_text"] = ""
-        st.session_state["query_results_columns"] = []
-        st.session_state.pop("query_results_headers", None)
-        st.rerun()
-    result_raw = st.text_area("Hasil query dari Impala", key="query_results_text", height=240,
-                              placeholder="nama\tno_rekening\tsaldo\nBudi\t0012345678\t150000")
-    result_separator = st.selectbox("Pemisah hasil query", ["Otomatis", "TAB", "Koma", "|"], key="query_results_separator")
-    try:
-        result_headers, result_rows = parse_result(result_raw, {"Otomatis": "auto", "TAB": "\t", "Koma": ",", "|": "|"}[result_separator])
-    except ValueError as exc:
-        st.error(str(exc))
-    else:
-        if result_headers:
-            # Include position so duplicate column names can be selected independently.
-            result_options = [f"{i + 1}. {name}" for i, name in enumerate(result_headers)]
-            detected_columns = detect_sensitive_columns(result_headers)
-            detect_again = st.button("Pilih ulang hasil deteksi otomatis", key="query_results_detect")
-            if st.session_state.get("query_results_headers") != result_headers or detect_again:
-                st.session_state["query_results_columns"] = [result_options[i] for i in detected_columns]
-                st.session_state["query_results_headers"] = list(result_headers)
-            st.caption(f"{len(detected_columns)} kolom terdeteksi dari nama seperti no, nomor, number, key, CIF, name/nama, address/alamat, rekening, email, dan telepon. Deteksi berdasarkan header saja; periksa pilihan sebelum menyalin. Pilihan manual tetap dipakai selama header tidak berubah.")
-            chosen_columns = st.multiselect("Kolom sensitif yang disamarkan", result_options, key="query_results_columns")
-            st.caption(f"{len(result_rows)} baris data · {len(result_headers)} kolom. Header dan kolom yang tidak dipilih tetap asli. Nilai berulang dalam satu kolom memakai alias yang sama; sel kosong tetap kosong.")
-            if chosen_columns and result_rows:
-                masked_result = mask_result(result_headers, result_rows, [result_options.index(value) for value in chosen_columns])
-                st.markdown("**Hasil untuk disalin ke AI**")
-                st.code(masked_result, language=None, wrap_lines=False)
-                st.download_button("Download hasil data masking", data=masked_result,
-                                   file_name="masked_results.tsv", mime="text/tab-separated-values")
-                st.caption("Periksa header dan kolom yang tidak dipilih sebelum dibagikan. Data diproses di server aplikasi; fitur ini tidak menyimpan data ke file/database atau mengirimnya ke AI. Alias data hanya berlaku untuk input ini.")
-            elif not result_rows:
-                st.info("Header sudah terbaca. Paste juga baris hasil query.")
+    results_left, results_right = st.columns([1, 1], gap="large")
+    with results_right:
+        st.markdown("**2. Periksa & salin hasil**")
+    with results_left, st.container(border=True):
+        st.markdown("**1. Paste data & pilih kolom**")
+        if st.button("Hapus input hasil query", key="clear_query_results"):
+            st.session_state["query_results_text"] = ""
+            st.session_state["query_results_columns"] = []
+            st.session_state.pop("query_results_headers", None)
+            st.rerun()
+        result_raw = st.text_area("Hasil query dari Impala", key="query_results_text", height=240,
+                                  placeholder="nama\tno_rekening\tsaldo\nBudi\t0012345678\t150000")
+        result_separator = st.selectbox("Pemisah hasil query", ["Otomatis", "TAB", "Koma", "|"], key="query_results_separator")
+        try:
+            result_headers, result_rows = parse_result(result_raw, {"Otomatis": "auto", "TAB": "\t", "Koma": ",", "|": "|"}[result_separator])
+        except ValueError as exc:
+            st.error(str(exc))
+        else:
+            if result_headers:
+                # Include position so duplicate column names can be selected independently.
+                result_options = [f"{i + 1}. {name}" for i, name in enumerate(result_headers)]
+                detected_columns = detect_sensitive_columns(result_headers)
+                detect_again = st.button("Pilih ulang hasil deteksi otomatis", key="query_results_detect")
+                if st.session_state.get("query_results_headers") != result_headers or detect_again:
+                    st.session_state["query_results_columns"] = [result_options[i] for i in detected_columns]
+                    st.session_state["query_results_headers"] = list(result_headers)
+                st.caption(f"{len(detected_columns)} kolom otomatis dipilih dari nama header. Tambah atau hapus pilihan di bawah.")
+                chosen_columns = st.multiselect("Kolom sensitif yang disamarkan", result_options, key="query_results_columns")
+                st.caption(f"{len(result_rows)} baris data · {len(result_headers)} kolom. Header dan kolom yang tidak dipilih tetap asli. Nilai berulang dalam satu kolom memakai alias yang sama; sel kosong tetap kosong.")
+                if chosen_columns and result_rows:
+                    with results_right:
+                        masked_result = mask_result(result_headers, result_rows, [result_options.index(value) for value in chosen_columns])
+                        st.caption("Salin lewat ikon di pojok kanan atas, atau download sebagai TSV.")
+                        st.code(masked_result, language=None, wrap_lines=False)
+                        st.download_button("Download TSV", data=masked_result, type="primary",
+                                           file_name="masked_results.tsv", mime="text/tab-separated-values")
+                        st.caption("Periksa header dan kolom yang tidak dipilih sebelum dibagikan. Data diproses di server aplikasi; fitur ini tidak menyimpan data ke file/database atau mengirimnya ke AI. Alias data hanya berlaku untuk input ini.")
+                elif not result_rows:
+                    with results_right:
+                        st.info("Header sudah terbaca. Paste juga baris hasil query.")
+                else:
+                    with results_right:
+                        st.info("Pilih minimal satu kolom sensitif untuk menampilkan hasil masking.")
             else:
-                st.info("Pilih minimal satu kolom sensitif untuk menampilkan hasil masking.")
+                with results_right:
+                    st.info("Hasil masking akan muncul di sini setelah data dipaste di sebelah kiri.")
 
 with tab_help:
     st.subheader("Panduan singkat")
@@ -360,9 +381,9 @@ with tab_help:
 3. **Periksa pratinjau.** Nama tanpa tipe memakai `STRING`. Nama seperti `no rek string` dibaca sebagai `no_rek STRING`. Spasi berlebih, baris kosong, dan pemisah di tepi input dirapikan.
 4. **Salin hasil.** STG berisi `STRING`, TXF berisi `CAST(TRIM(...))`, dan SRI memakai tipe input. Jumlah baris tampil di atas setiap blok; angka itu tidak ikut tersalin.
 
-**Reverse SQL Hive:** paste `CREATE VIEW ... AS SELECT`, `CREATE TABLE` / `SHOW CREATE TABLE`, atau hasil `DESCRIBE` dari Hive/Beeline. Tabel `createtab_stmt` hasil copy Hive akan dibuka. Nama VIEW/TABLE dan tabel sumber pada `FROM` ditampilkan. Ekspresi `CAST(TRIM(...))` dan `TO_DATE(...)` dibaca, lalu SQL view, STG, TXF, dan SRI ditampilkan.
+**Rapikan SQL Hive:** paste `CREATE VIEW ... AS SELECT`, `CREATE TABLE` / `SHOW CREATE TABLE`, atau hasil `DESCRIBE` dari Hive/Beeline. Tabel `createtab_stmt` hasil copy Hive akan dibuka. Nama VIEW/TABLE dan tabel sumber pada `FROM` ditampilkan. Ekspresi `CAST(TRIM(...))` dan `TO_DATE(...)` dibaca, lalu SQL view, STG, TXF, dan SRI ditampilkan.
 
-**Table Masking:** paste SQL atau shell script. Database/tabel pada konteks SQL umum dan variabel seperti `DB_NAME` / `TABLE_NAME` diganti alias `DB_001` / `TABLE_001`. Opsi IP dan SSH menyamarkan alamat IP serta user/host SSH. Tambahkan nilai yang belum terdeteksi, satu per baris. Penggantian literal bersifat case-sensitive dan juga berlaku di komentar/string. Salin blok hasil atau download script; mapping nama asli hanya ditampilkan di expander terpisah. Periksa hasil sebelum membagikan script.
+**Masking SQL / Script:** paste SQL atau shell script. Database/tabel pada konteks SQL umum dan variabel seperti `DB_NAME` / `TABLE_NAME` diganti alias `DB_001` / `TABLE_001`. Opsi IP dan SSH menyamarkan alamat IP serta user/host SSH. Tambahkan nilai yang belum terdeteksi, satu per baris. Penggantian literal bersifat case-sensitive dan juga berlaku di komentar/string. Salin blok hasil atau download script; mapping nama asli hanya ditampilkan di expander terpisah. Periksa hasil sebelum membagikan script.
 
 SQL mengikuti gaya Hive/Impala. Periksa kembali hasil sebelum menjalankannya. Input diproses di server tempat aplikasi berjalan, jadi ikuti kebijakan perusahaan untuk data sensitif.
         """
