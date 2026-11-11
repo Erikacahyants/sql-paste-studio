@@ -4,7 +4,20 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from result_masking import mask_result, parse_result
+from result_masking import mask_result, parse_result, detect_sensitive_columns
+
+
+def test_detect_sensitive_headers_in_common_naming_styles():
+    headers = ['NO', 'no_rek', 'nomor_kartu', 'accountNumber', 'customer_key',
+               'CIF', 'cifname', 'fullName', 'nama_nasabah', 'ADDRESS',
+               'alamat_rumah', 'email', 'noHP', 'NIK', 'NPWP', 'customer_id',
+               'norekening', 'telp', 'tanggal_lahir']
+    assert detect_sensitive_columns(headers) == list(range(len(headers)))
+
+
+def test_detection_leaves_ordinary_measure_columns_unselected():
+    assert detect_sensitive_columns(['saldo', 'nominal', 'amount', 'periode',
+                                     'note', 'quantity', 'status']) == []
 
 
 def test_selected_columns_repeated_values_and_leading_zeroes():

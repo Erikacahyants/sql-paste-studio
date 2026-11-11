@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import streamlit as st
 from masking import mask_text, restore_text
-from result_masking import parse_result, mask_result
+from result_masking import parse_result, mask_result, detect_sensitive_columns
 
 from formatter import (
     format_schema_sql,
@@ -314,10 +314,11 @@ with tab_masking:
 
 with tab_results:
     st.subheader("Masking Hasil Query Impala")
-    st.caption("Paste hasil data beserta header, lalu pilih kolom sensitif sebelum membagikannya ke AI. Mendukung copy TAB, CSV, dan tabel dengan pemisah |.")
+    st.caption("Paste hasil data beserta header. Kolom sensitif otomatis dipilih berdasarkan namanya; tambahkan atau lepas pilihan sesuai kebutuhan. Mendukung copy TAB, CSV, dan tabel dengan pemisah |.")
     if st.button("Hapus input hasil query", key="clear_query_results"):
         st.session_state["query_results_text"] = ""
         st.session_state["query_results_columns"] = []
+        st.session_state.pop("query_results_headers", None)
         st.rerun()
     result_raw = st.text_area("Hasil query dari Impala", key="query_results_text", height=240,
                               placeholder="nama\tno_rekening\tsaldo\nBudi\t0012345678\t150000")
@@ -330,9 +331,12 @@ with tab_results:
         if result_headers:
             # Include position so duplicate column names can be selected independently.
             result_options = [f"{i + 1}. {name}" for i, name in enumerate(result_headers)]
-            st.session_state["query_results_columns"] = [
-                value for value in st.session_state.get("query_results_columns", []) if value in result_options
-            ]
+            detected_columns = detect_sensitive_columns(result_headers)
+            detect_again = st.button("Pilih ulang hasil deteksi otomatis", key="query_results_detect")
+            if st.session_state.get("query_results_headers") != result_headers or detect_again:
+                st.session_state["query_results_columns"] = [result_options[i] for i in detected_columns]
+                st.session_state["query_results_headers"] = list(result_headers)
+            st.caption(f"{len(detected_columns)} kolom terdeteksi dari nama seperti no, nomor, number, key, CIF, name/nama, address/alamat, rekening, email, dan telepon. Deteksi berdasarkan header saja; periksa pilihan sebelum menyalin. Pilihan manual tetap dipakai selama header tidak berubah.")
             chosen_columns = st.multiselect("Kolom sensitif yang disamarkan", result_options, key="query_results_columns")
             st.caption(f"{len(result_rows)} baris data · {len(result_headers)} kolom. Header dan kolom yang tidak dipilih tetap asli. Nilai berulang dalam satu kolom memakai alias yang sama; sel kosong tetap kosong.")
             if chosen_columns and result_rows:
