@@ -31,7 +31,9 @@ class MaskingResult:
 
 
 def mask_text(raw: str, *, tables: str = '', databases: str = '',
-              extra: str = '', mask_ip: bool = True, mask_ssh: bool = True) -> MaskingResult:
+              extra: str = '', mask_ip: bool = True, mask_ssh: bool = True,
+              mask_paths: bool = True,
+              mappings: list[dict[str, str]] | None = None) -> MaskingResult:
     """Discover literal names, then replace in one pass to avoid alias cascades.
 
     Additional values are newline-separated literals. Matching is case sensitive;
@@ -49,6 +51,27 @@ def mask_text(raw: str, *, tables: str = '', databases: str = '',
     for values, kind in ((databases, 'DB'), (tables, 'TABLE'), (extra, 'MASK')):
         for value in values.splitlines():
             add(value, kind)
+
+    path_spans: list[tuple[int, int, str]] = []
+    if mask_paths:
+        # Keep URL/JDBC components and the shell interpreter outside path masking.
+        excluded = [m.span() for m in re.finditer(
+            r'''[A-Za-z][\w+.-]*://[^\s'"<>]+|(?m:^\#![^\n]*)''', raw,
+        )]
+        path_pattern = re.compile(
+            r'''(?P<quote>['"])(?P<quoted>(?:/|~/|\./|\.\./)[^\n]*?)(?P=quote)|'''
+            r'''(?<![\w/.$~\\])(?P<plain>(?:/|~/|\./|\.\./)[^\s'"`<>|;&()]+)'''
+        )
+        for match in path_pattern.finditer(raw):
+            group = 'quoted' if match['quoted'] is not None else 'plain'
+            start, end = match.span(group)
+            value = match[group]
+            if any(start < b and end > a for a, b in excluded):
+                continue
+            if value in {'/', './', '../', '~/'} or '$' in value:
+                continue
+            add(value, 'PATH')
+            path_spans.append((start, end, value))
 
     for match in ASSIGNMENT.finditer(raw):
         key = match['key'].upper()
@@ -159,12 +182,14 @@ def mask_text(raw: str, *, tables: str = '', databases: str = '',
 
     if not names:
         return MaskingResult(raw, [])
-    aliases: dict[str, str] = {}
+    aliases = {row['Asli']: row['Masking'] for row in mappings or []}
     counts: dict[str, int] = {}
     for value, kind in names.items():
+        if value in aliases:
+            continue
         counts[kind] = counts.get(kind, 0) + 1
         alias = f'{kind}_{counts[kind]:03d}'
-        while alias in raw or alias in aliases.values():
+        while alias in raw or alias in aliases.values() or alias in aliases:
             counts[kind] += 1
             alias = f'{kind}_{counts[kind]:03d}'
         aliases[value] = alias
@@ -178,8 +203,48 @@ def mask_text(raw: str, *, tables: str = '', databases: str = '',
         used.add(match[0])
         return aliases[match[0]]
 
-    result = pattern.sub(replace, raw)
+    # Replace whole path occurrences first, so a table name within a path cannot
+    # expose the remaining directories. Do not replace path substrings in URLs.
+    path_values = {value for _, _, value in path_spans}
+
+    def replace_non_path(match: re.Match) -> str:
+        if match[0] in path_values:
+            return match[0]
+        return replace(match)
+
+    chunks: list[str] = []
+    cursor = 0
+    for start, end, value in path_spans:
+        chunks.append(pattern.sub(replace_non_path, raw[cursor:start]))
+        chunks.append(aliases[value])
+        used.add(value)
+        cursor = end
+    chunks.append(pattern.sub(replace_non_path, raw[cursor:]))
+    result = ''.join(chunks)
     return MaskingResult(result, [
         {'Jenis': names[v], 'Asli': v, 'Masking': aliases[v]}
         for v in names if v in used
     ])
+
+
+def restore_text(raw: str, mappings: list[dict[str, str]]) -> MaskingResult:
+    """Restore exact alias tokens in one pass, including GPT-lowercased aliases.
+
+    As with masking, replacement also applies to comments and string literals.
+    Unknown aliases are left unchanged; no SQL or shell code is executed.
+    """
+    aliases = {row['Masking'].lower(): row['Asli'] for row in mappings}
+    if not aliases:
+        return MaskingResult(raw, [])
+    pattern = re.compile(r'(?<![\w$])(?:' + '|'.join(
+        re.escape(alias) for alias in sorted(aliases, key=len, reverse=True)
+    ) + r')(?![\w$])', re.I)
+    used: set[str] = set()
+
+    def replace(match: re.Match) -> str:
+        alias = match[0].lower()
+        used.add(alias)
+        return aliases[alias]
+
+    text = pattern.sub(replace, raw)
+    return MaskingResult(text, [row for row in mappings if row['Masking'].lower() in used])

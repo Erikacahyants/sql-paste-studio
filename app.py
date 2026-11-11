@@ -1,8 +1,8 @@
-"""SQL Paste Studio — paste text, inspect columns, and copy SQL."""
+"""BDE Tools — paste text, inspect columns, and copy SQL."""
 from __future__ import annotations
 
 import streamlit as st
-from masking import mask_text
+from masking import mask_text, restore_text
 
 from formatter import (
     format_schema_sql,
@@ -12,7 +12,7 @@ from formatter import (
 )
 
 
-st.set_page_config(page_title="SQL Paste Studio", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="BDE Tools", page_icon="⚡", layout="wide")
 
 st.markdown(
     """
@@ -36,7 +36,7 @@ st.markdown(
     </style>
     <div class="hero">
       <div class="eyebrow">DATA ENGINEERING / SQL UTILITY</div>
-      <h1>SQL Paste Studio <span style="color:#70e3cb">⚡</span></h1>
+      <h1>BDE Tools <span style="color:#70e3cb">⚡</span></h1>
       <p>Sekali paste daftar kolom atau schema, langsung dapat STG, TXF, dan SRI. Periksa hasilnya, lalu salin blok yang dibutuhkan.</p>
     </div>
     """,
@@ -60,6 +60,7 @@ st.session_state.setdefault("schema_text", SCHEMA_SAMPLE)
 st.session_state.setdefault("hive_text", HIVE_SAMPLE)
 
 MASKING_SAMPLE = '''#!/bin/bash
+SCRIPT_PATH="/x/x/bot/s/f_147/tXLON_102"
 DB_NAME="prd_finance"
 TABLE_NAME="daily_balance"
 SSH_USER="etl_user"
@@ -72,6 +73,8 @@ SELECT * FROM raw_finance.transactions;
 REMOTE
 '''
 st.session_state.setdefault("masking_text", "")
+st.session_state.setdefault("masking_mappings", [])
+st.session_state.setdefault("restore_text", "")
 
 DELIMITER_CHOICES = ["Otomatis", "|", "|@~", "TAB", "Koma", "Baris baru", "Kustom"]
 
@@ -236,15 +239,23 @@ with tab_hive:
             st.info("Paste SQL atau hasil DESCRIBE dari Hive di sebelah kiri.")
 
 with tab_masking:
+    st.caption("Mapping tersimpan sementara di memori sesi ini, tanpa file atau database. Refresh / sesi baru dapat menghilangkan mapping. Pertahankan alias persis seperti hasil masking saat meminta query ke GPT.")
+    if st.button("Hapus mapping & input sesi masking", key="reset_masking_session"):
+        st.session_state["masking_mappings"] = []
+        for key in ("masking_text", "masking_dbs", "masking_tables", "masking_extra", "restore_text"):
+            st.session_state[key] = ""
+        st.rerun()
     left, right = st.columns([1, 1], gap="large")
     with left, st.container(border=True):
         st.markdown('<div class="step">01 / Paste script</div>', unsafe_allow_html=True)
         st.subheader("Table Masking")
-        st.caption("Paste SQL atau teks shell script untuk menyamarkan nama database, tabel, IP, dan user/host SSH.")
+        st.caption("Paste SQL atau teks shell script untuk menyamarkan nama database, tabel, IP, user/host SSH, dan path folder/file.")
         input_actions("masking", MASKING_SAMPLE)
         masking_raw = st.text_area("SQL / shell script", key="masking_text", height=360)
         masking_ip = st.toggle("Masking alamat IP", value=True)
         masking_ssh = st.toggle("Masking user dan host SSH", value=True)
+        masking_paths = st.toggle("Masking path folder / file", value=True)
+        st.caption("Contoh path: /x/x/bot/s/f_147/tXLON_102 menjadi PATH_001. Path yang sama memakai alias yang sama.")
         with st.expander("Nama tambahan yang perlu dimasking"):
             st.caption("Satu nilai asli per baris. Gunakan ini untuk nama dinamis atau pola yang belum terdeteksi otomatis.")
             masking_dbs = st.text_area("Nama database tambahan", key="masking_dbs")
@@ -258,7 +269,12 @@ with tab_masking:
             masked = mask_text(
                 masking_raw, tables=masking_tables, databases=masking_dbs,
                 extra=masking_extra, mask_ip=masking_ip, mask_ssh=masking_ssh,
+                mask_paths=masking_paths,
+                mappings=st.session_state["masking_mappings"],
             )
+            saved = {row["Asli"]: row for row in st.session_state["masking_mappings"]}
+            saved.update({row["Asli"]: row for row in masked.mappings})
+            st.session_state["masking_mappings"] = list(saved.values())
             st.caption(f"{len(masked.mappings)} nilai unik dimasking. Nilai yang sama memakai alias yang sama.")
             st.code(masked.text, language="bash", wrap_lines=True)
             st.download_button("Download hasil masking", data=masked.text,
@@ -271,6 +287,29 @@ with tab_masking:
             st.warning("Deteksi otomatis bersifat best-effort. Periksa hasil sebelum dibagikan; password, key, nama dinamis, dan pola SQL/SSH lain bisa belum tersamarkan. Tambahkan nilai yang masih terlihat lewat nama tambahan.")
         else:
             st.info("Paste script di sebelah kiri atau klik Isi contoh.")
+
+    st.divider()
+    st.subheader("Pulihkan query hasil GPT")
+    st.caption(f'{len(st.session_state["masking_mappings"])} mapping tersimpan di sesi. Bersihkan input masking tidak menghapus mapping; gunakan tombol Hapus mapping untuk memulai pekerjaan baru.')
+    restore_left, restore_right = st.columns(2, gap="large")
+    with restore_left:
+        restore_raw = st.text_area(
+            "Paste query hasil GPT", key="restore_text", height=260,
+            placeholder="SELECT * FROM DB_001.TABLE_001;",
+        )
+        st.caption("Gunakan alias dari hasil masking (misalnya DB_001.TABLE_001). Alias yang diganti GPT menjadi db1.table1 tidak dapat dicocokkan otomatis. Pemulihan berlaku juga di komentar/string.")
+    with restore_right:
+        if restore_raw.strip() and st.session_state["masking_mappings"]:
+            restored = restore_text(restore_raw, st.session_state["masking_mappings"])
+            st.caption(f"{len(restored.mappings)} alias unik dipulihkan ke nilai asli.")
+            st.code(restored.text, language="sql", wrap_lines=True)
+            st.download_button("Download query asli", data=restored.text,
+                               file_name="restored_query.sql", mime="text/plain")
+            st.caption("Hasil ini berisi nilai asli. Alias yang tidak ada dalam mapping tetap dibiarkan; periksa sebelum digunakan.")
+        elif restore_raw.strip():
+            st.info("Mapping sesi belum tersedia. Masking script asli terlebih dahulu.")
+        else:
+            st.info("Paste query hasil GPT untuk otomatis mengembalikan nama database, tabel, dan nilai lain yang dimasking.")
 
 with tab_help:
     st.subheader("Panduan singkat")
@@ -290,4 +329,4 @@ SQL mengikuti gaya Hive/Impala. Periksa kembali hasil sebelum menjalankannya. In
     )
 
 st.divider()
-st.caption("SQL Paste Studio · Hanya menghasilkan teks SQL; tidak terhubung ke database.")
+st.caption("BDE Tools · Hanya menghasilkan teks SQL; tidak terhubung ke database.")

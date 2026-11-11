@@ -1,4 +1,4 @@
-"""Pure parsing and SQL-formatting helpers for SQL Paste Studio.
+"""Pure parsing and SQL-formatting helpers for BDE Tools.
 
 No Streamlit imports here, so the parsing rules can be unit tested.
 """

@@ -1,4 +1,4 @@
-# SQL Paste Studio ⚡
+# BDE Tools ⚡
 
 Aplikasi web **Streamlit** untuk menghasilkan tiga blok SQL **STG / TXF / SRI** sekaligus dari daftar kolom atau schema.
 
@@ -23,6 +23,11 @@ Aplikasi web **Streamlit** untuk menghasilkan tiga blok SQL **STG / TXF / SRI** 
 3. Opsi IP dan SSH aktif secara default. SSH mencakup `user@host`, host langsung, opsi `-l`, `-J`, `-o HostName` / `User` / `ProxyJump`, serta variabel `SSH_HOST` / `SSH_USER` dan `REMOTE_HOST` / `REMOTE_USER`.
 4. Isi **Nama tambahan yang perlu dimasking** untuk pola yang belum terbaca, satu nilai literal per baris. Nilai berulang diganti alias yang sama seperti `DB_001`, `TABLE_001`, `IP_001`, `HOST_001`, dan `USER_001`.
 5. Periksa hasil, lalu salin blok kode atau download. Mapping berisi nama asli tersedia di expander terpisah dan tidak dimasukkan ke file hasil.
+6. Mapping otomatis disimpan di memori sesi Streamlit, tanpa database atau file. Alias tetap konsisten saat memasking query berikutnya di sesi yang sama. Paste query hasil GPT ke **Pulihkan query hasil GPT** untuk otomatis mengembalikan alias ke nilai asli, lalu salin atau download `restored_query.sql`.
+
+Minta GPT mempertahankan alias seperti `DB_001.TABLE_001`; perubahan huruf besar/kecil masih dikenali, tetapi alias baru seperti `db1.table1` tidak ditebak. Alias yang tidak dikenal dibiarkan apa adanya. Pemulihan juga berlaku di komentar/string dan mencakup seluruh nilai yang dimasking. Tombol **Bersihkan** hanya membersihkan input; **Hapus mapping & input sesi masking** menghapus mapping dan teks masking/pemulihan. Refresh atau sesi baru dapat menghilangkan mapping. Penyimpanan ini berada di memori server untuk sesi masing-masing, bukan penyimpanan permanen atau browser local storage.
+
+Opsi **Masking path folder / file** aktif secara default: `/x/x/bot/s/f_147/tXLON_102` menjadi `PATH_001`. Seluruh path diganti dengan satu alias yang konsisten, termasuk dalam assignment, komentar, dan tujuan SCP. Path Unix absolut, `~/`, `./`, dan `../` didukung; path dengan spasi perlu diapit tanda kutip. Shebang dan URL tidak dianggap path file. Path dinamis yang mengandung variabel shell serta path Windows dapat ditambahkan lewat input manual.
 
 Deteksi ini memakai heuristik, bukan parser SQL/shell lengkap. Nama dinamis, daftar tabel dengan koma, atau sintaks khusus dapat memerlukan input tambahan. Penggantian literal bersifat case-sensitive, mengikuti batas kata, dan berlaku juga dalam komentar/string. Password, private key, dan credential lain tidak otomatis dimasking; tambahkan nilai yang perlu disamarkan secara manual. Script hanya diproses sebagai teks, tidak dijalankan, dan tidak membuka koneksi SSH. Hasil ditujukan untuk dibagikan sebagai contoh, bukan langsung dijalankan.
 

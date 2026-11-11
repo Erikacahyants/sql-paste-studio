@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from masking import mask_text
+from masking import mask_text, restore_text
 
 
 def test_shell_script_masks_sql_variables_ssh_and_jdbc_consistently():
@@ -27,7 +27,7 @@ SQL
     assert 't.amount' in result.text and 't.id=c.id' in result.text
     assert result.text.count('DB_001') == 3
     assert result.text.count('\n') == raw.count('\n')
-    assert '-i ~/.ssh/id_rsa -p 2222' in result.text
+    assert '-i PATH_001 -p 2222' in result.text
 
 
 def test_quoted_sql_ddl_and_repeated_names():
@@ -70,7 +70,8 @@ def test_ssh_config_options_and_scp():
                        'scp ./dump.csv operator@private.internal:/tmp/dump.csv')
     for value in ('private.internal', 'operator', 'alias'):
         assert value not in result.text
-    assert '/tmp/dump.csv' in result.text
+    assert '/tmp/dump.csv' not in result.text
+    assert 'scp PATH_001 USER_001@HOST_001:PATH_002' in result.text
 
 
 def test_jdbc_database_detected_without_sql():
@@ -83,3 +84,59 @@ def test_ip_toggle_also_applies_to_ssh_host_variable():
     result = mask_text(raw, mask_ip=False)
     assert result.text.count('10.0.0.1') == 2
     assert 'admin' not in result.text
+
+
+def test_paths_in_assignments_commands_and_comments_are_consistent():
+    path = '/x/x/bot/s/f_147/tXLON_102'
+    raw = f'JOB="{path}"\nbash {path}\n# {path}\ncat {path}/output.log'
+    result = mask_text(raw)
+    assert result.text == 'JOB="PATH_001"\nbash PATH_001\n# PATH_001\ncat PATH_002'
+    assert mask_text(raw, mask_paths=False).text == raw
+
+
+def test_quoted_paths_spaces_and_shell_operators():
+    result = mask_text('cat "/srv/private files/input.csv" > /tmp/output.log; cd ../jobs')
+    assert result.text == 'cat "PATH_001" > PATH_002; cd PATH_003'
+
+
+def test_path_masking_preserves_shebang_urls_and_sql_division():
+    raw = '#!/bin/bash\ncurl https://example.org/srv/data\ncat /srv/data\nSELECT total / count;'
+    result = mask_text(raw)
+    assert result.text == '#!/bin/bash\ncurl https://example.org/srv/data\ncat PATH_001\nSELECT total / count;'
+
+
+def test_whole_path_wins_over_table_name_inside_it():
+    result = mask_text('SELECT * FROM orders; cat /srv/orders/data.csv')
+    assert result.text == 'SELECT * FROM TABLE_001; cat PATH_001'
+
+
+def test_session_aliases_stay_stable_across_different_queries():
+    first = mask_text('SELECT * FROM prod.orders')
+    second = mask_text('SELECT * FROM raw.customers JOIN prod.orders ON 1=1',
+                       mappings=first.mappings)
+    assert second.text == 'SELECT * FROM DB_002.TABLE_002 JOIN DB_001.TABLE_001 ON 1=1'
+    saved = {row['Asli']: row for row in first.mappings + second.mappings}
+    assert restore_text(second.text, list(saved.values())).text == (
+        'SELECT * FROM raw.customers JOIN prod.orders ON 1=1')
+    assert mask_text('SELECT * FROM prod.orders').text == first.text
+
+
+def test_restore_gpt_query_quotes_case_and_unknown_aliases():
+    masked = mask_text('SELECT * FROM prod.orders')
+    query = 'SELECT t.id FROM `db_001`.`table_001` t JOIN DB_999.TABLE_999 x ON 1=1'
+    assert restore_text(query, masked.mappings).text == (
+        'SELECT t.id FROM `prod`.`orders` t JOIN DB_999.TABLE_999 x ON 1=1')
+    assert restore_text('TABLE_001_backup xTABLE_001 $TABLE_001', masked.mappings).text == (
+        'TABLE_001_backup xTABLE_001 $TABLE_001')
+    assert restore_text(query, []).text == query
+
+
+def test_restore_round_trip_and_no_cascading_aliases():
+    raw = 'SELECT * FROM prod.orders; ssh operator@private.host "cat /srv/input.csv"'
+    masked = mask_text(raw)
+    assert restore_text(masked.text, masked.mappings).text == raw
+    mappings = [
+        {'Jenis': 'TABLE', 'Asli': 'TABLE_002', 'Masking': 'TABLE_001'},
+        {'Jenis': 'TABLE', 'Asli': 'orders', 'Masking': 'TABLE_002'},
+    ]
+    assert restore_text('TABLE_001 TABLE_002', mappings).text == 'TABLE_002 orders'
