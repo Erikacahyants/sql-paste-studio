@@ -31,6 +31,12 @@ Opsi **Masking path folder / file** aktif secara default: `/x/x/bot/s/f_147/tXLO
 
 Deteksi ini memakai heuristik, bukan parser SQL/shell lengkap. Nama dinamis, daftar tabel dengan koma, atau sintaks khusus dapat memerlukan input tambahan. Penggantian literal bersifat case-sensitive, mengikuti batas kata, dan berlaku juga dalam komentar/string. Password, private key, dan credential lain tidak otomatis dimasking; tambahkan nilai yang perlu disamarkan secara manual. Script hanya diproses sebagai teks, tidak dijalankan, dan tidak membuka koneksi SSH. Hasil ditujukan untuk dibagikan sebagai contoh, bukan langsung dijalankan.
 
+## Masking Hasil Query Impala
+
+Tab **Masking Hasil Query** menerima hasil data (baris dan kolom), bukan SQL. Copy hasil Impala beserta header dalam format TAB, CSV, atau tabel `|`, lalu pilih **Kolom sensitif yang disamarkan**. Hanya isi kolom pilihan yang diganti alias; header dan kolom lain tetap asli. Nilai berulang dalam satu kolom mendapat alias yang sama, sel kosong tetap kosong, dan angka nol di depan tetap dipertahankan pada kolom yang tidak dipilih. Hasil tersedia untuk disalin atau di-download sebagai TSV.
+
+Periksa header dan kolom yang tidak dipilih sebelum mengirim hasil ke AI. Fitur ini mengolah data di server aplikasi tanpa menyimpannya ke file/database atau mengirimnya ke AI. Alias berlaku untuk input saat ini dan tidak memakai mapping pemulihan SQL. Gunakan **Hapus input hasil query** untuk membersihkan input sesi.
+
 ## Jalankan lokal
 
 Pastikan Python 3.10+ telah terpasang.

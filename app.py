@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import streamlit as st
 from masking import mask_text, restore_text
+from result_masking import parse_result, mask_result
 
 from formatter import (
     format_schema_sql,
@@ -118,7 +119,7 @@ def show_errors(errors: list[str]) -> None:
         st.error(f"Ada {len(errors) - 8} masalah lain. Periksa input dan pratinjau kolom.")
 
 
-tab_schema, tab_hive, tab_masking, tab_help = st.tabs(["Generator STG / TXF / SRI", "Reverse SQL Hive", "Table Masking", "Panduan"])
+tab_schema, tab_hive, tab_masking, tab_results, tab_help = st.tabs(["Generator STG / TXF / SRI", "Reverse SQL Hive", "Table Masking", "Masking Hasil Query", "Panduan"])
 
 with tab_schema:
     left, right = st.columns([1, 1], gap="large")
@@ -239,7 +240,7 @@ with tab_hive:
             st.info("Paste SQL atau hasil DESCRIBE dari Hive di sebelah kiri.")
 
 with tab_masking:
-    st.caption("Mapping tersimpan sementara di memori sesi ini, tanpa file atau database. Refresh / sesi baru dapat menghilangkan mapping. Pertahankan alias persis seperti hasil masking saat meminta query ke GPT.")
+    st.caption("Mapping tersimpan sementara di memori sesi ini, tanpa file atau database. Refresh / sesi baru dapat menghilangkan mapping. Pertahankan alias persis seperti hasil masking saat meminta query.")
     if st.button("Hapus mapping & input sesi masking", key="reset_masking_session"):
         st.session_state["masking_mappings"] = []
         for key in ("masking_text", "masking_dbs", "masking_tables", "masking_extra", "restore_text"):
@@ -289,12 +290,12 @@ with tab_masking:
             st.info("Paste script di sebelah kiri atau klik Isi contoh.")
 
     st.divider()
-    st.subheader("Pulihkan query hasil GPT")
+    st.subheader("Masukkan Query")
     st.caption(f'{len(st.session_state["masking_mappings"])} mapping tersimpan di sesi. Bersihkan input masking tidak menghapus mapping; gunakan tombol Hapus mapping untuk memulai pekerjaan baru.')
     restore_left, restore_right = st.columns(2, gap="large")
     with restore_left:
         restore_raw = st.text_area(
-            "Paste query hasil GPT", key="restore_text", height=260,
+            "Paste query disini", key="restore_text", height=260,
             placeholder="SELECT * FROM DB_001.TABLE_001;",
         )
         st.caption("Gunakan alias dari hasil masking (misalnya DB_001.TABLE_001). Alias yang diganti GPT menjadi db1.table1 tidak dapat dicocokkan otomatis. Pemulihan berlaku juga di komentar/string.")
@@ -309,7 +310,42 @@ with tab_masking:
         elif restore_raw.strip():
             st.info("Mapping sesi belum tersedia. Masking script asli terlebih dahulu.")
         else:
-            st.info("Paste query hasil GPT untuk otomatis mengembalikan nama database, tabel, dan nilai lain yang dimasking.")
+            st.info("Paste query disini untuk otomatis mengembalikan nama database, tabel, dan nilai lain yang dimasking.")
+
+with tab_results:
+    st.subheader("Masking Hasil Query Impala")
+    st.caption("Paste hasil data beserta header, lalu pilih kolom sensitif sebelum membagikannya ke AI. Mendukung copy TAB, CSV, dan tabel dengan pemisah |.")
+    if st.button("Hapus input hasil query", key="clear_query_results"):
+        st.session_state["query_results_text"] = ""
+        st.session_state["query_results_columns"] = []
+        st.rerun()
+    result_raw = st.text_area("Hasil query dari Impala", key="query_results_text", height=240,
+                              placeholder="nama\tno_rekening\tsaldo\nBudi\t0012345678\t150000")
+    result_separator = st.selectbox("Pemisah hasil query", ["Otomatis", "TAB", "Koma", "|"], key="query_results_separator")
+    try:
+        result_headers, result_rows = parse_result(result_raw, {"Otomatis": "auto", "TAB": "\t", "Koma": ",", "|": "|"}[result_separator])
+    except ValueError as exc:
+        st.error(str(exc))
+    else:
+        if result_headers:
+            # Include position so duplicate column names can be selected independently.
+            result_options = [f"{i + 1}. {name}" for i, name in enumerate(result_headers)]
+            st.session_state["query_results_columns"] = [
+                value for value in st.session_state.get("query_results_columns", []) if value in result_options
+            ]
+            chosen_columns = st.multiselect("Kolom sensitif yang disamarkan", result_options, key="query_results_columns")
+            st.caption(f"{len(result_rows)} baris data · {len(result_headers)} kolom. Header dan kolom yang tidak dipilih tetap asli. Nilai berulang dalam satu kolom memakai alias yang sama; sel kosong tetap kosong.")
+            if chosen_columns and result_rows:
+                masked_result = mask_result(result_headers, result_rows, [result_options.index(value) for value in chosen_columns])
+                st.markdown("**Hasil untuk disalin ke AI**")
+                st.code(masked_result, language=None, wrap_lines=False)
+                st.download_button("Download hasil data masking", data=masked_result,
+                                   file_name="masked_results.tsv", mime="text/tab-separated-values")
+                st.caption("Periksa header dan kolom yang tidak dipilih sebelum dibagikan. Data diproses di server aplikasi; fitur ini tidak menyimpan data ke file/database atau mengirimnya ke AI. Alias data hanya berlaku untuk input ini.")
+            elif not result_rows:
+                st.info("Header sudah terbaca. Paste juga baris hasil query.")
+            else:
+                st.info("Pilih minimal satu kolom sensitif untuk menampilkan hasil masking.")
 
 with tab_help:
     st.subheader("Panduan singkat")
